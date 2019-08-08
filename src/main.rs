@@ -1,5 +1,5 @@
 pub mod component;
-pub mod entity;
+pub mod engine;
 pub mod traits;
 pub mod utils;
 
