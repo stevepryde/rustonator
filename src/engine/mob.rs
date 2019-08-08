@@ -1,5 +1,4 @@
 use crate::component::action::Action;
-use crate::component::effect::{Effect, EffectType};
 use crate::traits::celltypes::{CanPass, CellType};
 use crate::traits::gameobject::{GameObject, SuperValue};
 use rand::Rng;
@@ -175,7 +174,7 @@ impl Mob {
 }
 
 impl CanPass for Mob {
-    fn can_pass(&self, cell_type: &CellType) -> bool {
+    fn can_pass(&self, cell_type: CellType) -> bool {
         match cell_type {
             CellType::Wall => false,
             CellType::Mystery => false,

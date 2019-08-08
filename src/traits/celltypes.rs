@@ -35,7 +35,7 @@ impl CellType {
 }
 
 pub trait CanPass {
-    fn can_pass(&self, cell_type: &CellType) -> bool {
+    fn can_pass(&self, _cell_type: CellType) -> bool {
         false
     }
 }

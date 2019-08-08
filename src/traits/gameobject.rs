@@ -21,7 +21,7 @@ impl<'a> SuperValue<'a> {
     pub fn get_vec(&self, key: &str) -> Vec<serde_json::Value> {
         self.value
             .get(key)
-            .map_or(Vec::new(), |x| x.as_array().map(|y| y.clone()).unwrap_or(Vec::new()))
+            .map_or(Vec::new(), |x| x.as_array().cloned().unwrap_or_default())
     }
 
     pub fn get_string(&self, key: &str) -> String {

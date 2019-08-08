@@ -185,7 +185,7 @@ impl Player {
 }
 
 impl CanPass for Player {
-    fn can_pass(&self, cell_type: &CellType) -> bool {
+    fn can_pass(&self, cell_type: CellType) -> bool {
         match cell_type {
             CellType::Wall => false,
             CellType::Mystery => false,
