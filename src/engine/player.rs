@@ -1,5 +1,6 @@
 use crate::component::action::Action;
 use crate::component::effect::{Effect, EffectType};
+use crate::traits::celltypes::{CanPass, CellType};
 use crate::traits::gameobject::{GameObject, SuperValue};
 use bitflags::bitflags;
 use rand::Rng;
@@ -22,7 +23,7 @@ pub struct Player {
     action: Action,
     speed: f32,
     image: String,
-    range: u8,
+    range: u32,
     bomb_time: f32,
     max_bombs: u32,
     cur_bombs: u32,
@@ -65,6 +66,22 @@ impl Player {
         Player::default()
     }
 
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn bomb_time(&self) -> f32 {
+        self.bomb_time
+    }
+
+    pub fn range(&self) -> u32 {
+        self.range
+    }
+
     pub fn update(&mut self, delta_time: f32) {
         let action = self.action.clone();
         self.update_with_temp_action(&action, delta_time);
@@ -94,8 +111,8 @@ impl Player {
         } else {
             self.speed
         };
-        self.x += tmp_action.x * delta_time * effective_speed;
-        self.y += tmp_action.y * delta_time * effective_speed;
+        self.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
+        self.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
     }
 
     fn add_effect(&mut self, effect: Effect) {
@@ -167,6 +184,17 @@ impl Player {
     }
 }
 
+impl CanPass for Player {
+    fn can_pass(&self, cell_type: &CellType) -> bool {
+        match cell_type {
+            CellType::Wall => false,
+            CellType::Mystery => false,
+            CellType::Bomb => self.has_flag(PlayerFlags::WALK_THROUGH_BOMBS),
+            _ => true,
+        }
+    }
+}
+
 impl GameObject for Player {
     fn to_json(&self) -> serde_json::Value {
         let mut effect_data = Vec::new();
@@ -202,7 +230,7 @@ impl GameObject for Player {
         self.action.from_json(sv.get_value("action"));
         self.speed = sv.get_f32("speed");
         self.image = sv.get_string("image");
-        self.range = sv.get_u32("range") as u8;
+        self.range = sv.get_u32("range");
         self.bomb_time = sv.get_f32("bombTime");
         self.max_bombs = sv.get_u32("maxBombs");
         self.cur_bombs = sv.get_u32("curBombs");
