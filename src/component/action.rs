@@ -1,4 +1,4 @@
-use crate::traits::gameobject::{GameObject, SuperValue};
+use crate::traits::jsonobject::{JSONObject, JSONValue};
 use serde_json::json;
 
 #[derive(Default, Clone)]
@@ -53,7 +53,7 @@ impl Action {
     }
 }
 
-impl GameObject for Action {
+impl JSONObject for Action {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "id": self.id,
@@ -65,7 +65,7 @@ impl GameObject for Action {
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.id = sv.get_u32("id");
         self.set(sv.get_i32("x"), sv.get_i32("y"), sv.get_bool("fire"));
         self.deltatime = sv.get_f32("deltaTime");

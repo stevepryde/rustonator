@@ -1,33 +1,37 @@
 use serde_json;
 
-pub trait GameObject {
+pub trait JSONObject {
     fn to_json(&self) -> serde_json::Value;
     fn from_json(&mut self, data: &serde_json::Value);
 }
 
-pub struct SuperValue<'a> {
+pub struct JSONValue<'a> {
     value: &'a serde_json::Value,
 }
 
-impl<'a> SuperValue<'a> {
+impl<'a> JSONValue<'a> {
     pub fn new(value: &'a serde_json::Value) -> Self {
-        SuperValue { value }
+        JSONValue { value }
     }
 
+    /// Get the underlying serde_json::Value for the specified key.
     pub fn get_value(&self, key: &str) -> &serde_json::Value {
         self.value.get(key).unwrap_or(&serde_json::Value::Null)
     }
 
+    /// Get Vec<serde_json::Value>
     pub fn get_vec(&self, key: &str) -> Vec<serde_json::Value> {
         self.value
             .get(key)
             .map_or(Vec::new(), |x| x.as_array().cloned().unwrap_or_default())
     }
 
+    /// Get the string value for the specified key if it exists, otherwise an empty string.
     pub fn get_string(&self, key: &str) -> String {
         self.get_string_or(key, String::new())
     }
 
+    ///
     pub fn get_string_or(&self, key: &str, default: String) -> String {
         match self.value.get(key) {
             Some(x) => match x.as_str() {

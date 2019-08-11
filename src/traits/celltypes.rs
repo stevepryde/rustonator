@@ -1,3 +1,4 @@
+use crate::traits::randenum::RandEnumFrom;
 use rand::Rng;
 
 #[derive(Copy, Clone, Debug)]
@@ -12,8 +13,8 @@ pub enum CellType {
     Bomb = 100,
 }
 
-impl CellType {
-    pub fn from(value: u8) -> Self {
+impl From<u8> for CellType {
+    fn from(value: u8) -> Self {
         match value {
             0 => CellType::Empty,
             1 => CellType::Wall,
@@ -27,15 +28,30 @@ impl CellType {
             _ => panic!("Invalid cell type: {}", value),
         }
     }
+}
 
-    // TODO: do I need this?
-    pub fn random() -> Self {
-        CellType::from(rand::thread_rng().gen_range(0, 8))
+// TODO: do I need this?
+impl RandEnumFrom<u8> for CellType {
+    fn get_enum_values() -> Vec<u8> {
+        let mut v: Vec<u8> = (0..8).collect();
+        v.push(100);
+        v
     }
 }
 
 pub trait CanPass {
     fn can_pass(&self, _cell_type: CellType) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_random() {
+        let r = CellType::random();
+        println!("{:?}", r);
     }
 }

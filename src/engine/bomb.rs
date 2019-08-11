@@ -1,7 +1,9 @@
 use crate::engine::player::Player;
-use crate::traits::gameobject::{GameObject, SuperValue};
+use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;
 use serde_json::json;
+
+// TODO: use type system for ids for better type safety.
 
 pub struct Bomb {
     id: u32,
@@ -47,7 +49,7 @@ impl Bomb {
     }
 }
 
-impl GameObject for Bomb {
+impl JSONObject for Bomb {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "id": self.id,
@@ -62,7 +64,7 @@ impl GameObject for Bomb {
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.id = sv.get_u32("id");
         self.pid = sv.get_string("pid");
         self.pname = sv.get_string("pname");
