@@ -1,5 +1,5 @@
 use crate::engine::bomb::Bomb;
-use crate::traits::gameobject::{GameObject, SuperValue};
+use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;
 use serde_json::json;
 
@@ -42,7 +42,7 @@ impl Explosion {
     }
 }
 
-impl GameObject for Explosion {
+impl JSONObject for Explosion {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "id": self.id,
@@ -57,7 +57,7 @@ impl GameObject for Explosion {
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.id = sv.get_u32("id");
         self.pid = sv.get_string("pid");
         self.pname = sv.get_string("pname");

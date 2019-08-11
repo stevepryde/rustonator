@@ -1,9 +1,11 @@
 use crate::component::action::Action;
 use crate::traits::celltypes::{CanPass, CellType};
-use crate::traits::gameobject::{GameObject, SuperValue};
+use crate::traits::jsonobject::{JSONObject, JSONValue};
+use crate::traits::randenum::RandEnumFrom;
 use rand::Rng;
 use serde_json::json;
 
+#[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
     // Pick a nearby spot and try to reach it.
     NearbyCell = 0,
@@ -21,8 +23,8 @@ pub enum MobTargetMode {
     DangerAvoidance = 6,
 }
 
-impl MobTargetMode {
-    pub fn from(value: u8) -> Self {
+impl From<u8> for MobTargetMode {
+    fn from(value: u8) -> Self {
         match value {
             0 => MobTargetMode::NearbyCell,
             1 => MobTargetMode::NearbyPlayer,
@@ -34,10 +36,12 @@ impl MobTargetMode {
             _ => panic!("Invalid mob target mode: {}", value),
         }
     }
+}
 
-    pub fn random() -> Self {
-        // Don't include danger mode when getting random mode.
-        MobTargetMode::from(rand::thread_rng().gen_range(0, 6))
+// Provides MobTargetMode::random().
+impl RandEnumFrom<u8> for MobTargetMode {
+    fn get_enum_values() -> Vec<u8> {
+        (0..7).collect()
     }
 }
 
@@ -48,8 +52,8 @@ pub enum MobTargetDir {
     Left = 3,
 }
 
-impl MobTargetDir {
-    pub fn from(value: u8) -> Self {
+impl From<u8> for MobTargetDir {
+    fn from(value: u8) -> Self {
         match value {
             0 => MobTargetDir::Up,
             1 => MobTargetDir::Right,
@@ -58,12 +62,15 @@ impl MobTargetDir {
             _ => panic!("Invalid ModTargetDir: {}", value),
         }
     }
+}
 
-    pub fn random() -> Self {
-        // Don't include danger mode when getting random mode.
-        MobTargetDir::from(rand::thread_rng().gen_range(0, 4))
+impl RandEnumFrom<u8> for MobTargetDir {
+    fn get_enum_values() -> Vec<u8> {
+        (0..4).collect()
     }
+}
 
+impl MobTargetDir {
     pub fn right(self) -> Self {
         match self {
             MobTargetDir::Up => MobTargetDir::Right,
@@ -168,9 +175,7 @@ impl Mob {
         }
     }
 
-    // fn choose_new_target(&mut self, world: &World, playerList: &PlayerList) {
-    //     // TODO: ...
-    // }
+    // fn choose_new_target(&mut self, world: &World, playerList: &PlayerList) {}
 }
 
 impl CanPass for Mob {
@@ -184,7 +189,7 @@ impl CanPass for Mob {
     }
 }
 
-impl GameObject for Mob {
+impl JSONObject for Mob {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "id": self.id,
@@ -199,7 +204,7 @@ impl GameObject for Mob {
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.id = sv.get_u32("id");
         self.active = sv.get_bool("active");
         self.x = sv.get_f32("x");

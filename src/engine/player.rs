@@ -1,7 +1,8 @@
 use crate::component::action::Action;
 use crate::component::effect::{Effect, EffectType};
 use crate::traits::celltypes::{CanPass, CellType};
-use crate::traits::gameobject::{GameObject, SuperValue};
+use crate::traits::jsonobject::{JSONObject, JSONValue};
+use crate::traits::randenum::RandEnumFrom;
 use bitflags::bitflags;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -195,7 +196,7 @@ impl CanPass for Player {
     }
 }
 
-impl GameObject for Player {
+impl JSONObject for Player {
     fn to_json(&self) -> serde_json::Value {
         let mut effect_data = Vec::new();
         for effect in &self.effects[self.effect_index] {
@@ -222,7 +223,7 @@ impl GameObject for Player {
         })
     }
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.id = sv.get_string("id");
         self.active = sv.get_bool("active");
         self.x = sv.get_f32("x");

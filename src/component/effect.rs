@@ -1,6 +1,7 @@
-use crate::traits::gameobject::{GameObject, SuperValue};
-use serde_json::json;
+use crate::traits::jsonobject::{JSONObject, JSONValue};
+use crate::traits::randenum::RandEnumFrom;
 use rand::Rng;
+use serde_json::json;
 
 #[derive(Copy, Clone, Debug)]
 pub enum EffectType {
@@ -9,8 +10,8 @@ pub enum EffectType {
     Invincibility = 2,
 }
 
-impl EffectType {
-    pub fn from(value: u8) -> Self {
+impl From<u8> for EffectType {
+    fn from(value: u8) -> Self {
         match value {
             0 => EffectType::SpeedUp,
             1 => EffectType::SlowDown,
@@ -18,9 +19,11 @@ impl EffectType {
             _ => panic!("Invalid effect type: {}", value),
         }
     }
+}
 
-    pub fn random() -> Self {
-        EffectType::from(rand::thread_rng().gen_range(0, 3))
+impl RandEnumFrom<u8> for EffectType {
+    fn get_enum_values() -> Vec<u8> {
+        (0..3).collect()
     }
 }
 
@@ -50,7 +53,7 @@ impl Effect {
     }
 }
 
-impl GameObject for Effect {
+impl JSONObject for Effect {
     fn to_json(&self) -> serde_json::Value {
         json!({
             "type": self.effect_type as u8,
@@ -61,7 +64,7 @@ impl GameObject for Effect {
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = SuperValue::new(data);
+        let sv = JSONValue::new(data);
         self.effect_type = EffectType::from(sv.get_u32("type") as u8);
         self.remaining = sv.get_f32("remaining");
         self.name = sv.get_string("name");
