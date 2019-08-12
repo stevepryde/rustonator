@@ -1,7 +1,10 @@
+use crate::engine::explosion::Explosion;
 use crate::engine::player::Player;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;
 use serde_json::json;
+
+use crate::tools::itemstore::HasId;
 
 // TODO: use type system for ids for better type safety.
 
@@ -19,9 +22,9 @@ pub struct Bomb {
 }
 
 impl Bomb {
-    pub fn new(id: u32, player: &Player, map_x: u32, map_y: u32) -> Self {
+    pub fn new(player: &Player, map_x: u32, map_y: u32) -> Self {
         Bomb {
-            id,
+            id: 0,
             pid: player.id().to_owned(),
             pname: player.name().to_owned(),
             active: true,
@@ -33,6 +36,10 @@ impl Bomb {
         }
     }
 
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
     pub fn pid(&self) -> &str {
         self.pid.as_str()
     }
@@ -41,10 +48,14 @@ impl Bomb {
         self.pname.as_str()
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn tick(&mut self, delta_time: f32) -> Option<Explosion> {
         self.remaining -= delta_time;
         if self.remaining <= 0.0 {
             self.remaining = 0.0;
+            self.active = false;
+            Some(Explosion::new(Some(&self), self.map_x, self.map_y))
+        } else {
+            None
         }
     }
 }
@@ -77,5 +88,11 @@ impl JSONObject for Bomb {
         // NOTE: We lose timestamp in the client!
         // TODO: It would assist AI if access to the timestamp was granted. Do we want this?
         self.timestamp = 0;
+    }
+}
+
+impl HasId for Bomb {
+    fn set_id(&mut self, id: u32) {
+        self.id = id;
     }
 }
