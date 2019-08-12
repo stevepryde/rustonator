@@ -5,6 +5,7 @@ use crate::engine::mob::Mob;
 use crate::engine::player::Player;
 use crate::engine::worlddata::{InternalMobData, InternalWorldData, MobSpawner, WorldData};
 use crate::engine::worldzone::WorldZoneData;
+use crate::tools::itemstore::ItemStore;
 use crate::traits::celltypes::{CanPass, CellType};
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use serde_json::json;
@@ -24,8 +25,8 @@ pub struct World {
     mob_spawners: Vec<MobSpawner>,
     players: HashMap<String, Player>,
     mobs: HashMap<u32, Mob>,
-    bombs: HashMap<u32, Bomb>,
-    explosions: HashMap<u32, Explosion>,
+    bombs: ItemStore<Bomb>,
+    explosions: ItemStore<Explosion>,
 }
 
 impl World {
@@ -47,9 +48,27 @@ impl World {
             mob_spawners: Vec::with_capacity(4),
             players: HashMap::new(),
             mobs: HashMap::new(),
-            bombs: HashMap::new(),
-            explosions: HashMap::new(),
+            bombs: ItemStore::new(),
+            explosions: ItemStore::new(),
         }
+    }
+
+    pub fn update(&mut self, delta_time: f32) {
+        // Update remaining time for all bombs and explosions.
+        for explosion in self.explosions.iter_mut() {
+            explosion.update(delta_time);
+        }
+
+        self.explosions.retain(|_, e| e.is_active());
+
+        for bomb in self.bombs.iter_mut() {
+            if let Some(x) = bomb.tick(delta_time) {
+                // Bomb exploded.
+                self.explosions.add(x);
+            }
+        }
+
+        self.bombs.retain(|_, b| b.is_active());
     }
 
     fn get_index(&self, x: u32, y: u32) -> usize {
@@ -186,7 +205,9 @@ impl World {
         (1, 1)
     }
 
-    // pub fn setBomb
+    pub fn addBomb(&mut self, bomb: Bomb) {
+        self.bombs.add(bomb);
+    }
 }
 
 impl JSONObject for World {
