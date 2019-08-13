@@ -35,6 +35,14 @@ impl Explosion {
         self.active
     }
 
+    pub fn map_x(&self) -> u32 {
+        self.map_x
+    }
+
+    pub fn map_y(&self) -> u32 {
+        self.map_y
+    }
+
     pub fn update(&mut self, delta_time: f32) {
         self.remaining -= delta_time;
         if self.remaining <= 0.3 {

@@ -31,11 +31,12 @@ impl<T: HasId> ItemStore<T> {
         next
     }
 
-    pub fn add(&mut self, item: T) {
+    pub fn add(&mut self, item: T) -> u32 {
         let id = self.get_next_id();
         let mut item = item;
         item.set_id(id);
         self.items.insert(id, item);
+        id
     }
 
     pub fn destroy(&mut self, id: u32) {

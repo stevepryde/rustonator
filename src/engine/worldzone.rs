@@ -129,4 +129,22 @@ impl WorldZoneData {
             zone.num_players = 0;
         }
     }
+
+    pub fn get_zone_at_index(&self, index: usize) -> &WorldZone {
+        &self.zones[index]
+    }
+
+    pub fn get_zone_at_index_mut(&mut self, index: usize) -> &mut WorldZone {
+        &mut self.zones[index]
+    }
+
+    pub fn get_zone_at(&self, zone_x: u32, zone_y: u32) -> &WorldZone {
+        let index = self.get_zone_index(zone_x, zone_y);
+        self.get_zone_at_index(index)
+    }
+
+    pub fn get_zone_at_mut(&mut self, zone_x: u32, zone_y: u32) -> &mut WorldZone {
+        let index = self.get_zone_index(zone_x, zone_y);
+        self.get_zone_at_index_mut(index)
+    }
 }

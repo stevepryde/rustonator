@@ -3,11 +3,14 @@ use crate::engine::config::GameConfig;
 use crate::engine::explosion::Explosion;
 use crate::engine::mob::Mob;
 use crate::engine::player::Player;
-use crate::engine::worlddata::{InternalMobData, InternalWorldData, MobSpawner, WorldData};
+use crate::engine::worlddata::{
+    InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldData,
+};
 use crate::engine::worldzone::WorldZoneData;
 use crate::tools::itemstore::ItemStore;
 use crate::traits::celltypes::{CanPass, CellType};
 use crate::traits::jsonobject::{JSONObject, JSONValue};
+use rand::Rng;
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -61,11 +64,16 @@ impl World {
 
         self.explosions.retain(|_, e| e.is_active());
 
+        let mut explode_new = Vec::new();
         for bomb in self.bombs.iter_mut() {
             if let Some(x) = bomb.tick(delta_time) {
                 // Bomb exploded.
-                self.explosions.add(x);
+                explode_new.push(x);
             }
+        }
+
+        for explosion in explode_new.into_iter() {
+            self.add_explosion(explosion);
         }
 
         self.bombs.retain(|_, b| b.is_active());
@@ -205,8 +213,67 @@ impl World {
         (1, 1)
     }
 
-    pub fn addBomb(&mut self, bomb: Bomb) {
-        self.bombs.add(bomb);
+    pub fn add_bomb(&mut self, bomb: Bomb) {
+        let index = self.get_index(bomb.map_x(), bomb.map_y());
+        let id = self.bombs.add(bomb);
+        self.data_internal
+            .set_at_index(index, InternalCellData::Bomb(id));
+    }
+
+    pub fn add_explosion(&mut self, explosion: Explosion) {
+        let index = self.get_index(explosion.map_x(), explosion.map_y());
+        let id = self.explosions.add(explosion);
+        self.data_internal
+            .set_at_index(index, InternalCellData::Explosion(id));
+    }
+
+    pub fn clear_internal_cell(&mut self, map_x: u32, map_y: u32) {
+        let index = self.get_index(map_x, map_y);
+        self.data_internal
+            .set_at_index(index, InternalCellData::Empty);
+    }
+
+    pub fn set_mob_data(&mut self, map_x: u32, map_y: u32, timestamp: i64) {
+        let index = self.get_index(map_x, map_y);
+        self.data_mob.set_at_index(index, timestamp);
+    }
+
+    pub fn get_mob_data(&self, map_x: u32, map_y: u32) -> i64 {
+        let index = self.get_index(map_x, map_y);
+        self.data_mob.get_at_index(index)
+    }
+
+    pub fn clear_mob_data(&mut self, map_x: u32, map_y: u32) {
+        let index = self.get_index(map_x, map_y);
+        self.data_mob.set_at_index(index, 0);
+    }
+
+    pub fn get_spawn_point(&self) -> (u32, u32) {
+        for _ in 0..1000 {
+            let tx = rand::thread_rng().gen_range(0, self.width_in_tiles);
+            let ty = rand::thread_rng().gen_range(0, self.height_in_tiles);
+            let (px, py) = self.find_nearest_blank(tx, ty);
+
+            let mut count = 0;
+            if let CellType::Empty = self.get_cell(px - 1, py) {
+                count += 1;
+            }
+            if let CellType::Empty = self.get_cell(px + 1, py) {
+                count += 1;
+            }
+            if let CellType::Empty = self.get_cell(px, py - 1) {
+                count += 1;
+            }
+            if let CellType::Empty = self.get_cell(px, py + 1) {
+                count += 1;
+            }
+
+            if count >= 2 {
+                return (px, py);
+            }
+        }
+
+        (1, 1)
     }
 }
 
