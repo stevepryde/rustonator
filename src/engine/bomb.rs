@@ -48,6 +48,14 @@ impl Bomb {
         self.pname.as_str()
     }
 
+    pub fn map_x(&self) -> u32 {
+        self.map_x
+    }
+
+    pub fn map_y(&self) -> u32 {
+        self.map_y
+    }
+
     pub fn tick(&mut self, delta_time: f32) -> Option<Explosion> {
         self.remaining -= delta_time;
         if self.remaining <= 0.0 {
