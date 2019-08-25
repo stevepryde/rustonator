@@ -3,7 +3,7 @@ use crate::engine::player::Player;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;
 use serde_json::json;
-use crate::engine::datatypes::MapPosition;
+use crate::engine::position::MapPosition;
 use crate::tools::itemstore::HasId;
 
 // TODO: use type system for ids for better type safety.

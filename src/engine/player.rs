@@ -7,6 +7,7 @@ use bitflags::bitflags;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use crate::engine::position::PixelPositionF32;
 
 bitflags! {
     #[derive(Default, Serialize, Deserialize)]
@@ -19,8 +20,7 @@ bitflags! {
 pub struct Player {
     id: String,
     active: bool,
-    x: f32,
-    y: f32,
+    position: PixelPositionF32,
     action: Action,
     speed: f32,
     image: String,
@@ -42,8 +42,7 @@ impl Default for Player {
         Player {
             id: String::new(),
             active: true,
-            x: 0.0,
-            y: 0.0,
+            position: PixelPositionF32::new(0.0, 0.0),
             action: Action::new(),
             speed: 200.0,
             image: String::from("p1"),
@@ -73,6 +72,10 @@ impl Player {
 
     pub fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    pub fn position(&self) -> PixelPositionF32 {
+        self.position
     }
 
     pub fn bomb_time(&self) -> f32 {
@@ -112,8 +115,8 @@ impl Player {
         } else {
             self.speed
         };
-        self.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
-        self.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
+        self.position.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
+        self.position.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
     }
 
     fn add_effect(&mut self, effect: Effect) {
@@ -160,9 +163,8 @@ impl Player {
         self.flags.contains(flag)
     }
 
-    fn setxy(&mut self, x: f32, y: f32) {
-        self.x = x;
-        self.y = y;
+    fn set_position(&mut self, pos: PixelPositionF32) {
+        self.position = pos;
     }
 
     fn set_action(&mut self, action: Action) {
@@ -206,8 +208,8 @@ impl JSONObject for Player {
         json!({
             "id": self.id,
             "active": self.active,
-            "x": self.x,
-            "y": self.y,
+            "x": self.position.x,
+            "y": self.position.y,
             "action": self.action.to_json(),
             "speed": self.speed,
             "image": self.image,
@@ -226,8 +228,8 @@ impl JSONObject for Player {
         let sv = JSONValue::new(data);
         self.id = sv.get_string("id");
         self.active = sv.get_bool("active");
-        self.x = sv.get_f32("x");
-        self.y = sv.get_f32("y");
+        self.position.x = sv.get_f32("x");
+        self.position.y = sv.get_f32("y");
         self.action.from_json(sv.get_value("action"));
         self.speed = sv.get_f32("speed");
         self.image = sv.get_string("image");

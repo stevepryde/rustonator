@@ -1,5 +1,5 @@
 use crate::engine::bomb::Bomb;
-use crate::engine::datatypes::MapPosition;
+use crate::engine::position::MapPosition;
 use crate::tools::itemstore::HasId;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;

@@ -4,6 +4,7 @@ use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::traits::randenum::RandEnumFrom;
 use rand::Rng;
 use serde_json::json;
+use crate::engine::position::{MapPosition, PixelPositionF32};
 
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
@@ -93,8 +94,7 @@ impl MobTargetDir {
 pub struct Mob {
     id: u32,
     active: bool,
-    x: f32,
-    y: f32,
+    position: PixelPositionF32,
     action: Action,
     speed: f32,
     image: String,
@@ -105,11 +105,9 @@ pub struct Mob {
     target_remaining: f32,
 
     // Position of current target. Used by NearbyCell mode.
-    target_mapx: u32,
-    target_mapy: u32,
+    target_position: MapPosition,
     // Position when we switch direction, to prevent mob going in circles for modes 4 & 5.
-    old_mapx: u32,
-    old_mapy: u32,
+    old_position: MapPosition,
     target_player: String, // pid.
     target_dir: MobTargetDir,
     range: u32,   // Visibility distance.
@@ -122,8 +120,7 @@ impl Default for Mob {
         Mob {
             id: 0,
             active: true,
-            x: 0.0,
-            y: 0.0,
+            position: PixelPositionF32::new(0.0, 0.0),
             action: Action::new(),
             speed: 60.0, // pixels per second.
             image: String::from("mob1"),
@@ -132,10 +129,8 @@ impl Default for Mob {
             // Server init.
             target_mode: MobTargetMode::NearbyCell,
             target_remaining: 0.0,
-            target_mapx: 0,
-            target_mapy: 0,
-            old_mapx: 0,
-            old_mapy: 0,
+            target_position: MapPosition::new(0, 0),
+            old_position: MapPosition::new(0, 0),
             target_player: String::new(),
             target_dir: MobTargetDir::Up,
             range: 8,
@@ -150,6 +145,10 @@ impl Mob {
         Mob::default()
     }
 
+    pub fn position(&self) -> PixelPositionF32 {
+        self.position
+    }
+
     pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f32) {
         if tmp_action.is_empty() {
             return;
@@ -162,8 +161,8 @@ impl Mob {
         } else {
             self.speed
         };
-        self.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
-        self.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
+        self.position.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
+        self.position.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
     }
 
     fn get_delta_for_dir(dir: MobTargetDir) -> (i32, i32) {
@@ -194,8 +193,8 @@ impl JSONObject for Mob {
         json!({
             "id": self.id,
             "active": self.active,
-            "x": self.x,
-            "y": self.y,
+            "x": self.position.x,
+            "y": self.position.y,
             "action": self.action.to_json(),
             "speed": self.speed,
             "image": self.image,
@@ -207,8 +206,8 @@ impl JSONObject for Mob {
         let sv = JSONValue::new(data);
         self.id = sv.get_u32("id");
         self.active = sv.get_bool("active");
-        self.x = sv.get_f32("x");
-        self.y = sv.get_f32("y");
+        self.position.x = sv.get_f32("x");
+        self.position.y = sv.get_f32("y");
         self.action.from_json(sv.get_value("action"));
         self.speed = sv.get_f32("speed");
         self.image = sv.get_string("image");
