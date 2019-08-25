@@ -1,3 +1,5 @@
+use crate::engine::position::MapPosition;
+
 #[derive(Debug, Clone)]
 pub struct WorldData(Vec<u8>);
 
@@ -98,12 +100,15 @@ impl InternalMobData {
 
 #[derive(Debug, Clone)]
 pub struct MobSpawner {
-    map_x: u32,
-    map_y: u32,
+    position: MapPosition
 }
 
 impl MobSpawner {
-    pub fn new(map_x: u32, map_y: u32) -> Self {
-        MobSpawner { map_x, map_y }
+    pub fn new(position: MapPosition) -> Self {
+        MobSpawner { position }
+    }
+
+    pub fn position(&self) -> MapPosition {
+        self.position
     }
 }

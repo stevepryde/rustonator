@@ -1,9 +1,9 @@
 use crate::engine::bomb::Bomb;
 use crate::engine::config::GameConfig;
-use crate::engine::datatypes::{MapPosition, SizeInTiles, SizeInPixels, ScreenMapPosition};
 use crate::engine::explosion::Explosion;
 use crate::engine::mob::Mob;
 use crate::engine::player::Player;
+use crate::engine::position::{MapPosition, SizeInPixels, SizeInTiles};
 use crate::engine::worlddata::{
     InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
 };
@@ -273,11 +273,48 @@ impl World {
         chunk
     }
 
+    pub fn is_nearby_players(&self, pos: MapPosition) -> bool {
+        // TODO: An ECS (array of positions) would be a lot faster here.
+        for p in self.players.values() {
+            if p.position()
+                .to_map_position(self.tile_size)
+                .is_within_range(pos, 4)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_nearby_mobs(&self, pos: MapPosition) -> bool {
+        // TODO: An ECS (array of positions) would be a lot faster here.
+        for m in self.mobs.values() {
+            if m.position()
+                .to_map_position(self.tile_size)
+                .is_within_range(pos, 4)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_nearby_mob_spawners(&self, pos: MapPosition) -> bool {
+        // TODO: An ECS (array of positions) would be a lot faster here.
+        for ms in &self.mob_spawners {
+            if ms.position().is_within_range(pos, 4) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn populate_blocks(&mut self) {
-        // let mut new_blocks = Vec::new();
-        for zone in self.zones.zone_iter() {
+        let mut new_blocks = Vec::new();
+        for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
-                continue;
+                // We're using a sorted iterator, so no point continuing.
+                break;
             }
 
             let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
@@ -290,7 +327,16 @@ impl World {
                 continue;
             }
 
-            // if !self.is_nearby_players()
+            if !self.is_nearby_players(blank)
+                && !self.is_nearby_mobs(blank)
+                && !self.is_nearby_mob_spawners(blank)
+            {
+                new_blocks.push(blank);
+
+                // NOTE: we currently break after adding a single block, but we could
+                // easily keep adding blocks until quota reached.
+                break;
+            }
         }
     }
 }

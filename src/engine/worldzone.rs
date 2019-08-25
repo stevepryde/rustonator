@@ -1,21 +1,22 @@
-use crate::engine::datatypes::{MapPosition, SizeInTiles};
+use crate::engine::position::{MapPosition, SizeInTiles};
+use itertools::Itertools;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ZonePosition {
-  pub x: u32,
-  pub y: u32,
+    pub x: u32,
+    pub y: u32,
 }
 
 impl ZonePosition {
-  pub fn new(x: u32, y: u32) -> Self {
-    ZonePosition { x, y }
-  }
+    pub fn new(x: u32, y: u32) -> Self {
+        ZonePosition { x, y }
+    }
 
-  pub fn from_map_position(pos: MapPosition, zone_size: SizeInTiles) -> Self {
-      let x = (pos.x as f32 / zone_size.width as f32) as u32;
-      let y = (pos.y as f32 / zone_size.height as f32) as u32;
-      ZonePosition { x, y }
-  }
+    pub fn from_map_position(pos: MapPosition, zone_size: SizeInTiles) -> Self {
+        let x = (pos.x as f32 / zone_size.width as f32) as u32;
+        let y = (pos.y as f32 / zone_size.height as f32) as u32;
+        ZonePosition { x, y }
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -169,5 +170,15 @@ impl WorldZoneData {
 
     pub fn zone_iter(&self) -> impl Iterator<Item = &WorldZone> {
         self.zones.iter()
+    }
+
+    /// Return iterator providing WorldZone objects sorted by (quota - num_blocks) descending.
+    pub fn zone_iter_sorted_by_shortfall(&self) -> impl Iterator<Item = &WorldZone> {
+        self.zones.iter().sorted_by(|a, b| {
+            Ord::cmp(
+                &(b.block_quota - b.num_blocks),
+                &(a.block_quota - a.num_blocks),
+            )
+        })
     }
 }
