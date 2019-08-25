@@ -1,10 +1,11 @@
 use crate::engine::bomb::Bomb;
 use crate::engine::config::GameConfig;
+use crate::engine::datatypes::{MapPosition, SizeInTiles, SizeInPixels, ScreenMapPosition};
 use crate::engine::explosion::Explosion;
 use crate::engine::mob::Mob;
 use crate::engine::player::Player;
 use crate::engine::worlddata::{
-    InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldData,
+    InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
 };
 use crate::engine::worldzone::WorldZoneData;
 use crate::tools::itemstore::ItemStore;
@@ -15,12 +16,9 @@ use serde_json::json;
 use std::collections::HashMap;
 
 pub struct World {
-    width_in_tiles: u32,
-    height_in_tiles: u32,
-    tile_width: u32,
-    tile_height: u32,
-    chunk_width: u32,
-    chunk_height: u32,
+    map_size: SizeInTiles,
+    tile_size: SizeInPixels,
+    chunk_size: SizeInTiles,
     data: WorldData,
     data_internal: InternalWorldData,
     data_mob: InternalMobData,
@@ -37,13 +35,17 @@ impl World {
         let tile_width = 32;
         let tile_height = 32;
 
-        World {
-            width_in_tiles: width,
-            height_in_tiles: height,
-            tile_width,
-            tile_height,
-            chunk_width: (config.get_width() as f32 / tile_width as f32) as u32 + 10,
-            chunk_height: (config.get_height() as f32 / tile_height as f32) as u32 + 10,
+        // Width and height must be odd.
+        let map_width = if width % 2 == 0 { width + 1 } else { width };
+        let map_height = if height % 2 == 0 { height + 1 } else { height };
+
+        let chunk_width = (config.get_width() as f32 / tile_width as f32) as u32 + 10;
+        let chunk_height = (config.get_height() as f32 / tile_height as f32) as u32 + 10;
+
+        let mut world = World {
+            map_size: SizeInTiles::new(map_width, map_height),
+            tile_size: SizeInPixels::new(tile_width, tile_height),
+            chunk_size: SizeInTiles::new(chunk_width, chunk_height),
             data: WorldData::new(width, height),
             data_internal: InternalWorldData::new(width, height),
             data_mob: InternalMobData::new(width, height),
@@ -53,7 +55,24 @@ impl World {
             mobs: HashMap::new(),
             bombs: ItemStore::new(),
             explosions: ItemStore::new(),
+        };
+
+        // Create walls.
+        for x in 0..map_width {
+            world.set_cell(MapPosition::new(x, 0), CellType::Wall);
+            world.set_cell(MapPosition::new(x, map_height - 1), CellType::Wall);
         }
+
+        for y in 0..map_height {
+            world.set_cell(MapPosition::new(0, y), CellType::Wall);
+            world.set_cell(MapPosition::new(map_width - 1, y), CellType::Wall);
+
+            for x in 1..((map_width as f32 / 2.0) as u32 - 2) {
+                world.set_cell(MapPosition::new(x * 2, y), CellType::Wall);
+            }
+        }
+
+        world
     }
 
     pub fn update(&mut self, delta_time: f32) {
@@ -79,223 +98,222 @@ impl World {
         self.bombs.retain(|_, b| b.is_active());
     }
 
-    fn get_index(&self, x: u32, y: u32) -> usize {
-        ((y * self.width_in_tiles) + x) as usize
+    fn get_index(&self, pos: MapPosition) -> usize {
+        ((pos.y * self.map_size.width) + pos.x) as usize
     }
 
-    pub fn get_cell(&self, x: u32, y: u32) -> CellType {
-        CellType::from(self.data.get_at_index(self.get_index(x, y)))
+    pub fn get_cell(&self, pos: MapPosition) -> CellType {
+        CellType::from(self.data.get_at_index(self.get_index(pos)))
     }
 
-    pub fn set_cell(&mut self, x: u32, y: u32, value: CellType) {
-        self.data.set_at_index(self.get_index(x, y), value as u8);
+    pub fn set_cell(&mut self, pos: MapPosition, value: CellType) {
+        if let CellType::Mystery = self.get_cell(pos) {
+            self.zones.del_block_at_map_xy(pos);
+        }
+        if let CellType::Mystery = value {
+            self.zones.add_block_at_map_xy(pos);
+        }
+        self.data.set_at_index(self.get_index(pos), value as u8);
     }
 
-    pub fn to_screen_x(&self, mx: u32) -> u32 {
-        mx * self.tile_width + (self.tile_width as f32 / 2.0) as u32
-    }
-
-    pub fn to_screen_y(&self, my: u32) -> u32 {
-        my * self.tile_height + (self.tile_height as f32 / 2.0) as u32
-    }
-
-    pub fn to_map_x(&self, sx: u32) -> u32 {
-        (sx as f32 / self.tile_width as f32) as u32
-    }
-
-    pub fn to_map_y(&self, sy: u32) -> u32 {
-        (sy as f32 / self.tile_height as f32) as u32
-    }
-
-    pub fn fix_screen_x(&self, sx: u32) -> u32 {
-        self.to_screen_x(self.to_map_x(sx))
-    }
-
-    pub fn fix_screen_y(&self, sy: u32) -> u32 {
-        self.to_screen_y(self.to_map_y(sy))
-    }
-
-    pub fn map_to_chunk_x(&self, mx: u32) -> u32 {
-        (mx as f32 / self.chunk_width as f32) as u32
-    }
-
-    pub fn map_to_chunk_y(&self, my: u32) -> u32 {
-        (my as f32 / self.chunk_height as f32) as u32
-    }
-
-    pub fn screen_to_chunk_x(&self, sx: u32) -> u32 {
-        self.map_to_chunk_x(self.to_map_x(sx))
-    }
-
-    pub fn screen_to_chunk_y(&self, sy: u32) -> u32 {
-        self.map_to_chunk_y(self.to_map_y(sy))
-    }
-
-    pub fn find_nearest_blank(&self, mx: u32, my: u32) -> (u32, u32) {
-        if let CellType::Empty = self.get_cell(mx, my) {
-            return (mx, my);
+    pub fn find_nearest_blank(&self, pos: MapPosition) -> MapPosition {
+        if let CellType::Empty = self.get_cell(pos) {
+            return pos;
         }
 
         for radius in 1..20 {
             let test_length = radius as usize * 2 + 1;
 
             // Top.
-            let startx = if radius > mx {
-                (mx - radius) as usize
+            let startx = if radius > pos.x {
+                (pos.x - radius) as usize
             } else {
                 1
             };
-            let endx = if startx + test_length >= self.width_in_tiles as usize {
-                (self.width_in_tiles as usize - 1) - startx
+            let endx = if startx + test_length >= self.map_size.width as usize {
+                (self.map_size.width as usize - 1) - startx
             } else {
                 startx + test_length
             };
 
-            if radius < my {
-                let cy = my - radius;
-                let start_index = self.get_index(startx as u32, cy);
+            if radius < pos.y {
+                let cy = pos.y - radius;
+                let start_index = self.get_index(MapPosition::new(startx as u32, cy));
                 for offset in 0..(endx - startx) {
                     if let CellType::Empty =
                         CellType::from(self.data.get_at_index(start_index + offset))
                     {
-                        return ((startx + offset) as u32, cy);
+                        return MapPosition::new((startx + offset) as u32, cy);
                     }
                 }
             }
 
             // Bottom.
-            let cy = my + radius;
-            if cy < self.height_in_tiles - 1 {
-                let start_index = self.get_index(startx as u32, cy);
+            let cy = pos.y + radius;
+            if cy < self.map_size.height - 1 {
+                let start_index = self.get_index(MapPosition::new(startx as u32, cy));
                 for offset in 0..(endx - startx) {
                     if let CellType::Empty =
                         CellType::from(self.data.get_at_index(start_index + offset))
                     {
-                        return ((startx + offset) as u32, cy);
+                        return MapPosition::new((startx + offset) as u32, cy);
                     }
                 }
             }
 
             // Left.
             let test_length = test_length - 2; // No need to test either end point twice.
-            let starty = if radius > my {
-                (my - radius) as usize + 1
+            let starty = if radius > pos.y {
+                (pos.y - radius) as usize + 1
             } else {
                 1
             };
-            let endy = if starty + test_length >= self.height_in_tiles as usize {
-                (self.height_in_tiles as usize - 1) - starty
+            let endy = if starty + test_length >= self.map_size.height as usize {
+                (self.map_size.height as usize - 1) - starty
             } else {
                 starty + test_length
             };
 
-            if radius < mx {
-                let cx = mx - radius;
+            if radius < pos.x {
+                let cx = pos.x - radius;
 
                 for y in starty..endy {
-                    if let CellType::Empty = self.get_cell(cx, y as u32) {
-                        return (cx, y as u32);
+                    if let CellType::Empty = self.get_cell(MapPosition::new(cx, y as u32)) {
+                        return MapPosition::new(cx, y as u32);
                     }
                 }
             }
 
             // Right.
-            let cx = mx + radius;
-            if cx < self.width_in_tiles - 1 {
+            let cx = pos.x + radius;
+            if cx < self.map_size.width - 1 {
                 for y in starty..endy {
-                    if let CellType::Empty = self.get_cell(cx, y as u32) {
-                        return (cx, y as u32);
+                    if let CellType::Empty = self.get_cell(MapPosition::new(cx, y as u32)) {
+                        return MapPosition::new(cx, y as u32);
                     }
                 }
             }
         }
 
-        (1, 1)
+        MapPosition::new(1, 1)
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb) {
-        let index = self.get_index(bomb.map_x(), bomb.map_y());
+        let index = self.get_index(bomb.position());
         let id = self.bombs.add(bomb);
         self.data_internal
             .set_at_index(index, InternalCellData::Bomb(id));
     }
 
     pub fn add_explosion(&mut self, explosion: Explosion) {
-        let index = self.get_index(explosion.map_x(), explosion.map_y());
+        let index = self.get_index(explosion.position());
         let id = self.explosions.add(explosion);
         self.data_internal
             .set_at_index(index, InternalCellData::Explosion(id));
     }
 
-    pub fn clear_internal_cell(&mut self, map_x: u32, map_y: u32) {
-        let index = self.get_index(map_x, map_y);
+    pub fn clear_internal_cell(&mut self, pos: MapPosition) {
+        let index = self.get_index(pos);
         self.data_internal
             .set_at_index(index, InternalCellData::Empty);
     }
 
-    pub fn set_mob_data(&mut self, map_x: u32, map_y: u32, timestamp: i64) {
-        let index = self.get_index(map_x, map_y);
+    pub fn set_mob_data(&mut self, pos: MapPosition, timestamp: i64) {
+        let index = self.get_index(pos);
         self.data_mob.set_at_index(index, timestamp);
     }
 
-    pub fn get_mob_data(&self, map_x: u32, map_y: u32) -> i64 {
-        let index = self.get_index(map_x, map_y);
+    pub fn get_mob_data(&self, pos: MapPosition) -> i64 {
+        let index = self.get_index(pos);
         self.data_mob.get_at_index(index)
     }
 
-    pub fn clear_mob_data(&mut self, map_x: u32, map_y: u32) {
-        let index = self.get_index(map_x, map_y);
+    pub fn clear_mob_data(&mut self, pos: MapPosition) {
+        let index = self.get_index(pos);
         self.data_mob.set_at_index(index, 0);
     }
 
-    pub fn get_spawn_point(&self) -> (u32, u32) {
+    pub fn get_spawn_point(&self) -> MapPosition {
         for _ in 0..1000 {
-            let tx = rand::thread_rng().gen_range(0, self.width_in_tiles);
-            let ty = rand::thread_rng().gen_range(0, self.height_in_tiles);
-            let (px, py) = self.find_nearest_blank(tx, ty);
+            let tx = rand::thread_rng().gen_range(0, self.map_size.width);
+            let ty = rand::thread_rng().gen_range(0, self.map_size.height);
+            let pos = self.find_nearest_blank(MapPosition::new(tx, ty));
 
             let mut count = 0;
-            if let CellType::Empty = self.get_cell(px - 1, py) {
+            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x - 1, pos.y)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(px + 1, py) {
+            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x + 1, pos.y)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(px, py - 1) {
+            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x, pos.y - 1)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(px, py + 1) {
+            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x, pos.y + 1)) {
                 count += 1;
             }
 
             if count >= 2 {
-                return (px, py);
+                return pos;
             }
         }
 
-        (1, 1)
+        MapPosition::new(1, 1)
+    }
+
+    pub fn get_chunk_data(&self, map_x: u32, map_y: u32) -> WorldChunk {
+        let w = std::cmp::min(self.chunk_size.width, self.map_size.width - map_x);
+        let h = std::cmp::min(self.chunk_size.height, self.map_size.height - map_y);
+        let mut chunk = WorldChunk::new(map_x, map_y, w, h);
+        for y in map_y..(map_y + h) {
+            let index = self.get_index(MapPosition::new(map_x, y));
+            chunk.set_slice(index, self.data.get_slice(index, w as usize));
+        }
+
+        chunk
+    }
+
+    pub fn populate_blocks(&mut self) {
+        // let mut new_blocks = Vec::new();
+        for zone in self.zones.zone_iter() {
+            if zone.quota_reached() {
+                continue;
+            }
+
+            let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
+            let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+            let blank = self.find_nearest_blank(MapPosition::new(bx, by));
+
+            // Avoid top left corner - it's the safe space for spawning players if no blank
+            // spaces were found.
+            if blank.x == 1 && blank.y == 1 {
+                continue;
+            }
+
+            // if !self.is_nearby_players()
+        }
     }
 }
 
 impl JSONObject for World {
     fn to_json(&self) -> serde_json::Value {
         json!({
-            "width": self.width_in_tiles,
-            "height": self.height_in_tiles,
-            "tileWidth": self.tile_width,
-            "tileHeight": self.tile_height,
-            "chunkWidth": self.chunk_width,
-            "chunkHeight": self.chunk_height
+            "width": self.map_size.width,
+            "height": self.map_size.height,
+            "tileWidth": self.tile_size.width,
+            "tileHeight": self.tile_size.width,
+            "chunkWidth": self.chunk_size.width,
+            "chunkHeight": self.chunk_size.height
         })
     }
 
     fn from_json(&mut self, data: &serde_json::Value) {
         let sv = JSONValue::new(data);
-        self.width_in_tiles = sv.get_u32("width");
-        self.height_in_tiles = sv.get_u32("height");
-        self.tile_width = sv.get_u32("tileWidth");
-        self.tile_height = sv.get_u32("tileHeight");
-        self.chunk_width = sv.get_u32("chunkWidth");
-        self.chunk_height = sv.get_u32("chunkHeight");
+        self.map_size.width = sv.get_u32("width");
+        self.map_size.height = sv.get_u32("height");
+        self.tile_size.width = sv.get_u32("tileWidth");
+        self.tile_size.height = sv.get_u32("tileHeight");
+        self.chunk_size.width = sv.get_u32("chunkWidth");
+        self.chunk_size.height = sv.get_u32("chunkHeight");
     }
 }

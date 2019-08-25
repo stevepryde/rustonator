@@ -1,21 +1,52 @@
+use crate::engine::datatypes::{MapPosition, SizeInTiles};
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct ZonePosition {
+  pub x: u32,
+  pub y: u32,
+}
+
+impl ZonePosition {
+  pub fn new(x: u32, y: u32) -> Self {
+    ZonePosition { x, y }
+  }
+
+  pub fn from_map_position(pos: MapPosition, zone_size: SizeInTiles) -> Self {
+      let x = (pos.x as f32 / zone_size.width as f32) as u32;
+      let y = (pos.y as f32 / zone_size.height as f32) as u32;
+      ZonePosition { x, y }
+  }
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct ZoneIndex(usize);
+
 #[derive(Debug, Clone)]
 pub struct WorldZone {
-    width: u32,
-    height: u32,
+    position: MapPosition,
+    size: SizeInTiles,
     num_blocks: u32,
     num_players: u32,
     block_quota: u32,
 }
 
 impl WorldZone {
-    pub fn new(width: u32, height: u32, block_quota: u32) -> Self {
+    pub fn new(position: MapPosition, size: SizeInTiles, block_quota: u32) -> Self {
         WorldZone {
-            width,
-            height,
+            position,
+            size,
             num_blocks: 0,
             num_players: 0,
             block_quota,
         }
+    }
+
+    pub fn position(&self) -> MapPosition {
+        self.position
+    }
+
+    pub fn size(&self) -> SizeInTiles {
+        self.size
     }
 
     pub fn quota_reached(&self) -> bool {
@@ -25,8 +56,7 @@ impl WorldZone {
 
 #[derive(Debug, Clone)]
 pub struct WorldZoneData {
-    zone_width: u32, // Width & height units are the number of tiles.
-    zone_height: u32,
+    zone_size: SizeInTiles,
     zones_across: usize,
     zones_down: usize,
     zones: Vec<WorldZone>,
@@ -71,8 +101,8 @@ impl WorldZoneData {
                 };
 
                 zones.push(WorldZone {
-                    width: zwidth,
-                    height: zheight,
+                    position: MapPosition::new(x as u32 * zone_width, y as u32 * zone_height),
+                    size: SizeInTiles::new(zwidth, zheight),
                     num_blocks: 0,
                     num_players: 0,
                     block_quota: ((zwidth * zheight) as f32 * quota_factor) as u32,
@@ -81,47 +111,36 @@ impl WorldZoneData {
         }
 
         WorldZoneData {
-            zone_width,
-            zone_height,
+            zone_size: SizeInTiles::new(zone_width, zone_height),
             zones_across,
             zones_down,
             zones,
         }
     }
 
-    pub fn get_zone_index(&self, zone_x: u32, zone_y: u32) -> usize {
-        ((zone_y * self.zones_across as u32) + zone_x) as usize
+    pub fn get_zone_index(&self, pos: ZonePosition) -> ZoneIndex {
+        ZoneIndex(((pos.y * self.zones_across as u32) + pos.x) as usize)
     }
 
-    pub fn map_to_zone_x(&self, mx: u32) -> u32 {
-        (mx as f32 / self.zone_width as f32) as u32
+    pub fn map_to_zone_index(&self, pos: MapPosition) -> ZoneIndex {
+        self.get_zone_index(ZonePosition::from_map_position(pos, self.zone_size))
     }
 
-    pub fn map_to_zone_y(&self, my: u32) -> u32 {
-        (my as f32 / self.zone_height as f32) as u32
+    pub fn add_block_at_map_xy(&mut self, pos: MapPosition) {
+        let zone_index = self.map_to_zone_index(pos);
+        self.zones[zone_index.0].num_blocks += 1;
     }
 
-    pub fn map_to_zone_index(&self, mx: u32, my: u32) -> usize {
-        let zx = self.map_to_zone_x(mx);
-        let zy = self.map_to_zone_y(my);
-        self.get_zone_index(zx, zy)
-    }
-
-    pub fn add_block_at_map_xy(&mut self, mx: u32, my: u32) {
-        let zone_index = self.map_to_zone_index(mx, my);
-        self.zones[zone_index].num_blocks += 1;
-    }
-
-    pub fn del_block_at_map_xy(&mut self, mx: u32, my: u32) {
-        let zone_index = self.map_to_zone_index(mx, my);
+    pub fn del_block_at_map_xy(&mut self, pos: MapPosition) {
+        let zone_index = self.map_to_zone_index(pos);
 
         // TODO: beware wrapping errors?
-        self.zones[zone_index].num_blocks -= 1;
+        self.zones[zone_index.0].num_blocks -= 1;
     }
 
-    pub fn add_player_at_map_xy(&mut self, mx: u32, my: u32) {
-        let zone_index = self.map_to_zone_index(mx, my);
-        self.zones[zone_index].num_players += 1;
+    pub fn add_player_at_map_xy(&mut self, pos: MapPosition) {
+        let zone_index = self.map_to_zone_index(pos);
+        self.zones[zone_index.0].num_players += 1;
     }
 
     pub fn clear_players(&mut self) {
@@ -130,21 +149,25 @@ impl WorldZoneData {
         }
     }
 
-    pub fn get_zone_at_index(&self, index: usize) -> &WorldZone {
-        &self.zones[index]
+    pub fn get_zone_at_index(&self, index: ZoneIndex) -> &WorldZone {
+        &self.zones[index.0]
     }
 
-    pub fn get_zone_at_index_mut(&mut self, index: usize) -> &mut WorldZone {
-        &mut self.zones[index]
+    pub fn get_zone_at_index_mut(&mut self, index: ZoneIndex) -> &mut WorldZone {
+        &mut self.zones[index.0]
     }
 
-    pub fn get_zone_at(&self, zone_x: u32, zone_y: u32) -> &WorldZone {
-        let index = self.get_zone_index(zone_x, zone_y);
+    pub fn get_zone_at(&self, zone_position: ZonePosition) -> &WorldZone {
+        let index = self.get_zone_index(zone_position);
         self.get_zone_at_index(index)
     }
 
-    pub fn get_zone_at_mut(&mut self, zone_x: u32, zone_y: u32) -> &mut WorldZone {
-        let index = self.get_zone_index(zone_x, zone_y);
+    pub fn get_zone_at_mut(&mut self, zone_position: ZonePosition) -> &mut WorldZone {
+        let index = self.get_zone_index(zone_position);
         self.get_zone_at_index_mut(index)
+    }
+
+    pub fn zone_iter(&self) -> impl Iterator<Item = &WorldZone> {
+        self.zones.iter()
     }
 }
