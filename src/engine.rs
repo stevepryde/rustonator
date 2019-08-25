@@ -1,5 +1,6 @@
 pub mod bomb;
 pub mod config;
+pub mod datatypes;
 pub mod explosion;
 pub mod mob;
 pub mod player;

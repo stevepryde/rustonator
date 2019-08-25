@@ -15,6 +15,40 @@ impl WorldData {
         // TODO: do we need a range check here?
         self.0[index] = value;
     }
+
+    pub fn get_slice(&self, index: usize, length: usize) -> &[u8] {
+        &self.0[index..(index + length)]
+    }
+
+    pub fn set_slice(&mut self, index: usize, slice: &[u8]) {
+        let end = index + slice.len();
+        self.0.as_mut_slice()[index..end].copy_from_slice(slice);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldChunk {
+    tx: u32,
+    ty: u32,
+    width: u32,
+    height: u32,
+    data: WorldData,
+}
+
+impl WorldChunk {
+    pub fn new(tx: u32, ty: u32, width: u32, height: u32) -> Self {
+        WorldChunk {
+            tx,
+            ty,
+            width,
+            height,
+            data: WorldData::new(width, height),
+        }
+    }
+
+    pub fn set_slice(&mut self, index: usize, slice: &[u8]) {
+        self.data.set_slice(index, slice);
+    }
 }
 
 #[derive(Debug, Clone)]

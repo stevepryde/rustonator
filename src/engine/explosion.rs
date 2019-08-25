@@ -1,4 +1,5 @@
 use crate::engine::bomb::Bomb;
+use crate::engine::datatypes::MapPosition;
 use crate::tools::itemstore::HasId;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use crate::utils::misc::unix_timestamp;
@@ -9,22 +10,20 @@ pub struct Explosion {
     pid: String,
     pname: String,
     active: bool,
-    map_x: u32,
-    map_y: u32,
+    position: MapPosition,
     remaining: f32,
     harmful: bool,
     timestamp: i64,
 }
 
 impl Explosion {
-    pub fn new(bomb: Option<&Bomb>, map_x: u32, map_y: u32) -> Self {
+    pub fn new(bomb: Option<&Bomb>, position: MapPosition) -> Self {
         Explosion {
             id: 0,
             pid: bomb.map_or(String::new(), |x| x.pid().to_owned()),
             pname: bomb.map_or(String::new(), |x| x.pname().to_owned()),
             active: true,
-            map_x,
-            map_y,
+            position,
             remaining: 0.5,
             harmful: true,
             timestamp: unix_timestamp(),
@@ -35,12 +34,8 @@ impl Explosion {
         self.active
     }
 
-    pub fn map_x(&self) -> u32 {
-        self.map_x
-    }
-
-    pub fn map_y(&self) -> u32 {
-        self.map_y
+    pub fn position(&self) ->MapPosition {
+        self.position
     }
 
     pub fn update(&mut self, delta_time: f32) {
@@ -63,8 +58,8 @@ impl JSONObject for Explosion {
             "pid": self.pid,
             "pname": self.pname,
             "active": self.active,
-            "mapX": self.map_x,
-            "mapY": self.map_y,
+            "mapX": self.position.x,
+            "mapY": self.position.y,
             "remaining": self.remaining,
             "harmful": self.harmful
         })
@@ -76,8 +71,7 @@ impl JSONObject for Explosion {
         self.pid = sv.get_string("pid");
         self.pname = sv.get_string("pname");
         self.active = sv.get_bool("active");
-        self.map_x = sv.get_u32("mapX");
-        self.map_y = sv.get_u32("mapY");
+        self.position = MapPosition::new(sv.get_u32("mapX"), sv.get_u32("mapY"));
         self.remaining = sv.get_f32("remaining");
         self.harmful = sv.get_bool("harmful");
 
