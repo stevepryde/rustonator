@@ -9,11 +9,11 @@ use crate::engine::worlddata::{
 };
 use crate::engine::worldzone::WorldZoneData;
 use crate::tools::itemstore::ItemStore;
-use crate::traits::celltypes::{CanPass, CellType};
+use crate::traits::celltypes::CellType;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use rand::Rng;
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct World {
     map_size: SizeInTiles,
@@ -310,7 +310,7 @@ impl World {
     }
 
     pub fn populate_blocks(&mut self) {
-        let mut new_blocks = Vec::new();
+        let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
                 // We're using a sorted iterator, so no point continuing.
@@ -331,11 +331,46 @@ impl World {
                 && !self.is_nearby_mobs(blank)
                 && !self.is_nearby_mob_spawners(blank)
             {
-                new_blocks.push(blank);
-
-                // NOTE: we currently break after adding a single block, but we could
-                // easily keep adding blocks until quota reached.
+                new_blocks.insert(blank);
                 break;
+            }
+        }
+
+        // Now add the blocks.
+        for block in new_blocks {
+            self.set_cell(block, CellType::Mystery);
+        }
+    }
+
+    pub fn add_mob_spawners(&mut self) {
+        let numx = 2;
+        let numy = 2;
+        let stepx = self.map_size.width as f32 / numx as f32;
+        let stepy = self.map_size.height as f32 / numy as f32;
+        let half_stepx = stepx / 2.0;
+        let half_stepy = stepy / 2.0;
+
+        for py in 0..numx {
+            for px in 0..numy {
+                let mx = ((stepx * px as f32) + half_stepx) as u32;
+                let my = ((stepy * py as f32) + half_stepy) as u32;
+
+                let mut blank = self.find_nearest_blank(MapPosition::new(mx, my));
+                if blank.x == 1 && blank.y == 1 {
+                    // Try a random location.
+                    let bx = rand::thread_rng().gen_range(1, self.map_size.width - 2);
+                    let by = rand::thread_rng().gen_range(1, self.map_size.height - 2);
+                    blank = self.find_nearest_blank(MapPosition::new(bx, by));
+
+                    if blank.x == 1 && blank.y == 1 {
+                        // Give up :(
+                        continue;
+                    }
+                }
+
+                // Add mob spawner.
+                self.mob_spawners.push(MobSpawner::new(blank));
+                self.set_cell(blank, CellType::MobSpawner);
             }
         }
     }
