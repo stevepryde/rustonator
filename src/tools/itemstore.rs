@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter;
 
 pub trait HasId {
     fn set_id(&mut self, id: u32);

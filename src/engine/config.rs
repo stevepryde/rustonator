@@ -3,9 +3,18 @@ pub struct GameConfig {
     screen_y: u32,
 }
 
+impl Default for GameConfig {
+    fn default() -> Self {
+        GameConfig {
+            screen_x: 800,
+            screen_y: 600,
+        }
+    }
+}
+
 impl GameConfig {
     pub fn new() -> Self {
-        GameConfig { screen_x: 800, screen_y: 600 }
+        GameConfig::default()
     }
 
     pub fn get_width(&self) -> u32 {

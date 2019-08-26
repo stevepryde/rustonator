@@ -1,5 +1,4 @@
 use crate::traits::randenum::RandEnumFrom;
-use rand::Rng;
 
 #[derive(Copy, Clone, Debug)]
 pub enum CellType {

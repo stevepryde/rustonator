@@ -7,7 +7,7 @@ fn diffu32(a: u32, b: u32) -> u32 {
   }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct MapPosition {
   pub x: u32,
   pub y: u32,
@@ -18,12 +18,12 @@ impl MapPosition {
     MapPosition { x, y }
   }
 
-  pub fn is_within_range(&self, pos: MapPosition, range: u32) -> bool {
+  pub fn is_within_range(self, pos: MapPosition, range: u32) -> bool {
     diffu32(pos.x, self.x) < range && diffu32(pos.y, self.y) < range
   }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq)]
 pub struct PixelPosition<T> {
   pub x: T,
   pub y: T,
@@ -60,7 +60,7 @@ where
 pub type PixelPositionU32 = PixelPosition<u32>;
 pub type PixelPositionF32 = PixelPosition<f32>;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct ChunkPosition {
   pub x: u32,
   pub y: u32,
@@ -89,7 +89,7 @@ impl ChunkPosition {
   }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct SizeInPixels {
   pub width: u32,
   pub height: u32,
@@ -101,7 +101,7 @@ impl SizeInPixels {
   }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct SizeInTiles {
   pub width: u32,
   pub height: u32,
