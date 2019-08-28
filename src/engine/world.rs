@@ -1,19 +1,16 @@
 use crate::engine::bomb::Bomb;
 use crate::engine::config::GameConfig;
 use crate::engine::explosion::Explosion;
-use crate::engine::mob::Mob;
-use crate::engine::player::Player;
-use crate::engine::position::{MapPosition, SizeInPixels, SizeInTiles};
+use crate::engine::position::{MapPosition, PixelPositionF32, SizeInPixels, SizeInTiles};
 use crate::engine::worlddata::{
     InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
 };
 use crate::engine::worldzone::WorldZoneData;
-use crate::tools::itemstore::ItemStore;
 use crate::traits::celltypes::CellType;
 use crate::traits::jsonobject::{JSONObject, JSONValue};
 use rand::Rng;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 pub struct World {
     map_size: SizeInTiles,
@@ -23,11 +20,6 @@ pub struct World {
     data_internal: InternalWorldData,
     data_mob: InternalMobData,
     zones: WorldZoneData,
-    mob_spawners: Vec<MobSpawner>,
-    players: HashMap<String, Player>,
-    mobs: HashMap<u32, Mob>,
-    bombs: ItemStore<Bomb>,
-    explosions: ItemStore<Explosion>,
 }
 
 impl World {
@@ -39,8 +31,8 @@ impl World {
         let map_width = if width % 2 == 0 { width + 1 } else { width };
         let map_height = if height % 2 == 0 { height + 1 } else { height };
 
-        let chunk_width = (config.get_width() as f32 / tile_width as f32) as u32 + 10;
-        let chunk_height = (config.get_height() as f32 / tile_height as f32) as u32 + 10;
+        let chunk_width = (config.screen_width() as f32 / tile_width as f32) as u32 + 10;
+        let chunk_height = (config.screen_height() as f32 / tile_height as f32) as u32 + 10;
 
         let mut world = World {
             map_size: SizeInTiles::new(map_width, map_height),
@@ -50,11 +42,6 @@ impl World {
             data_internal: InternalWorldData::new(width, height),
             data_mob: InternalMobData::new(width, height),
             zones: WorldZoneData::new(16, 16, width, height, 0.2),
-            mob_spawners: Vec::with_capacity(4),
-            players: HashMap::new(),
-            mobs: HashMap::new(),
-            bombs: ItemStore::new(),
-            explosions: ItemStore::new(),
         };
 
         // Create walls.
@@ -75,27 +62,16 @@ impl World {
         world
     }
 
-    pub fn update(&mut self, delta_time: f32) {
-        // Update remaining time for all bombs and explosions.
-        for explosion in self.explosions.iter_mut() {
-            explosion.update(delta_time);
-        }
+    pub fn add_bomb(&mut self, bomb_id: u32, pos: MapPosition) {
+        self.data_internal
+            .set_at_index(self.get_index(pos), InternalCellData::Bomb(bomb_id));
+    }
 
-        self.explosions.retain(|_, e| e.is_active());
-
-        let mut explode_new = Vec::new();
-        for bomb in self.bombs.iter_mut() {
-            if let Some(x) = bomb.tick(delta_time) {
-                // Bomb exploded.
-                explode_new.push(x);
-            }
-        }
-
-        for explosion in explode_new.into_iter() {
-            self.add_explosion(explosion);
-        }
-
-        self.bombs.retain(|_, b| b.is_active());
+    pub fn add_explosion(&mut self, explosion_id: u32, pos: MapPosition) {
+        self.data_internal.set_at_index(
+            self.get_index(pos),
+            InternalCellData::Explosion(explosion_id),
+        );
     }
 
     fn get_index(&self, pos: MapPosition) -> usize {
@@ -198,20 +174,6 @@ impl World {
         MapPosition::new(1, 1)
     }
 
-    pub fn add_bomb(&mut self, bomb: Bomb) {
-        let index = self.get_index(bomb.position());
-        let id = self.bombs.add(bomb);
-        self.data_internal
-            .set_at_index(index, InternalCellData::Bomb(id));
-    }
-
-    pub fn add_explosion(&mut self, explosion: Explosion) {
-        let index = self.get_index(explosion.position());
-        let id = self.explosions.add(explosion);
-        self.data_internal
-            .set_at_index(index, InternalCellData::Explosion(id));
-    }
-
     pub fn clear_internal_cell(&mut self, pos: MapPosition) {
         let index = self.get_index(pos);
         self.data_internal
@@ -273,43 +235,17 @@ impl World {
         chunk
     }
 
-    pub fn is_nearby_players(&self, pos: MapPosition) -> bool {
-        // TODO: An ECS (array of positions) would be a lot faster here.
-        for p in self.players.values() {
-            if p.position()
-                .to_map_position(self.tile_size)
-                .is_within_range(pos, 4)
-            {
-                return true;
-            }
-        }
-        false
+    pub fn is_nearby_entity(&self, pos: MapPosition, entities: &[PixelPositionF32]) -> bool {
+        entities
+            .iter()
+            .any(|p| p.to_map_position(self.tile_size).is_within_range(pos, 4))
     }
 
-    pub fn is_nearby_mobs(&self, pos: MapPosition) -> bool {
-        // TODO: An ECS (array of positions) would be a lot faster here.
-        for m in self.mobs.values() {
-            if m.position()
-                .to_map_position(self.tile_size)
-                .is_within_range(pos, 4)
-            {
-                return true;
-            }
-        }
-        false
+    pub fn is_nearby_map_entity(&self, pos: MapPosition, entities: &[MapPosition]) -> bool {
+        entities.iter().any(|e| e.is_within_range(pos, 4))
     }
 
-    pub fn is_nearby_mob_spawners(&self, pos: MapPosition) -> bool {
-        // TODO: An ECS (array of positions) would be a lot faster here.
-        for ms in &self.mob_spawners {
-            if ms.position().is_within_range(pos, 4) {
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn populate_blocks(&mut self) {
+    pub fn populate_blocks(&mut self, entities: &[PixelPositionF32], map_entities: &[MapPosition]) {
         let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
@@ -327,9 +263,8 @@ impl World {
                 continue;
             }
 
-            if !self.is_nearby_players(blank)
-                && !self.is_nearby_mobs(blank)
-                && !self.is_nearby_mob_spawners(blank)
+            if !self.is_nearby_entity(blank, entities)
+                && !self.is_nearby_map_entity(blank, map_entities)
             {
                 new_blocks.insert(blank);
                 break;
@@ -342,13 +277,14 @@ impl World {
         }
     }
 
-    pub fn add_mob_spawners(&mut self) {
+    pub fn add_mob_spawners(&mut self) -> Vec<MobSpawner> {
         let numx = 2;
         let numy = 2;
         let stepx = self.map_size.width as f32 / numx as f32;
         let stepy = self.map_size.height as f32 / numy as f32;
         let half_stepx = stepx / 2.0;
         let half_stepy = stepy / 2.0;
+        let mut mob_spawners = Vec::new();
 
         for py in 0..numx {
             for px in 0..numy {
@@ -369,10 +305,12 @@ impl World {
                 }
 
                 // Add mob spawner.
-                self.mob_spawners.push(MobSpawner::new(blank));
+                mob_spawners.push(MobSpawner::new(blank));
                 self.set_cell(blank, CellType::MobSpawner);
             }
         }
+
+        mob_spawners
     }
 }
 

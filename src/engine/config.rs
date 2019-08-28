@@ -17,11 +17,11 @@ impl GameConfig {
         GameConfig::default()
     }
 
-    pub fn get_width(&self) -> u32 {
+    pub fn screen_width(&self) -> u32 {
         self.screen_x
     }
 
-    pub fn get_height(&self) -> u32 {
+    pub fn screen_height(&self) -> u32 {
         self.screen_y
     }
 }
