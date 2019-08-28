@@ -30,6 +30,10 @@ impl Explosion {
         }
     }
 
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }
