@@ -1,10 +1,16 @@
-use crate::component::action::Action;
-use crate::traits::celltypes::{CanPass, CellType};
-use crate::traits::jsonobject::{JSONObject, JSONValue};
-use crate::traits::randenum::RandEnumFrom;
+use crate::{
+    component::action::Action,
+    engine::position::{MapPosition, PixelPositionF32},
+    traits::{
+        celltypes::{CanPass, CellType},
+        randenum::RandEnumFrom,
+        worldobject::{JsonError, ToJson},
+    },
+};
 use rand::Rng;
-use serde_json::json;
-use crate::engine::position::{MapPosition, PixelPositionF32};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
@@ -188,29 +194,48 @@ impl CanPass for Mob {
     }
 }
 
-impl JSONObject for Mob {
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "id": self.id,
-            "active": self.active,
-            "x": self.position.x,
-            "y": self.position.y,
-            "action": self.action.to_json(),
-            "speed": self.speed,
-            "image": self.image,
-            "name": self.name
+#[derive(Serialize, Deserialize)]
+pub struct MobData {
+    id: u32,
+    active: bool,
+    x: f32,
+    y: f32,
+    action: Action,
+    speed: f32,
+    image: String,
+    name: String,
+}
+
+impl TryFrom<serde_json::Value> for Mob {
+    type Error = JsonError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
+        let data: MobData = serde_json::from_value(value)?;
+        Ok(Mob {
+            id: data.id,
+            active: data.active,
+            position: PixelPositionF32::new(data.x, data.y),
+            action: data.action,
+            speed: data.speed,
+            image: data.image,
+            name: data.name,
+            ..Default::default()
         })
     }
+}
 
-    fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = JSONValue::new(data);
-        self.id = sv.get_u32("id");
-        self.active = sv.get_bool("active");
-        self.position.x = sv.get_f32("x");
-        self.position.y = sv.get_f32("y");
-        self.action.from_json(sv.get_value("action"));
-        self.speed = sv.get_f32("speed");
-        self.image = sv.get_string("image");
-        self.name = sv.get_string("name");
+impl ToJson for Mob {
+    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
+        let data = MobData {
+            id: self.id,
+            active: self.active,
+            x: self.position.x,
+            y: self.position.y,
+            action: self.action.clone(),
+            speed: self.speed,
+            image: self.image.clone(),
+            name: self.name.clone(),
+        };
+        serde_json::to_value(data).map_err(|e| e.into())
     }
 }

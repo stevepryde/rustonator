@@ -1,12 +1,15 @@
-use crate::traits::jsonobject::{JSONObject, JSONValue};
-use serde_json::json;
+use crate::traits::worldobject::{JsonError, ToJson};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::convert::TryFrom;
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     x: i32,
     y: i32,
     fire: bool,
     id: u32,
+    #[serde(rename = "deltaTime")]
     deltatime: f32, // TODO: do I need this?
 }
 
@@ -53,21 +56,16 @@ impl Action {
     }
 }
 
-impl JSONObject for Action {
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "id": self.id,
-            "x": self.get_x(),
-            "y": self.get_y(),
-            "fire": self.fire,
-            "deltaTime": self.deltatime
-        })
-    }
+impl TryFrom<serde_json::Value> for Action {
+    type Error = JsonError;
 
-    fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = JSONValue::new(data);
-        self.id = sv.get_u32("id");
-        self.set(sv.get_i32("x"), sv.get_i32("y"), sv.get_bool("fire"));
-        self.deltatime = sv.get_f32("deltaTime");
+    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
+        serde_json::from_value(value).map_err(|e| e.into())
+    }
+}
+
+impl ToJson for Action {
+    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
+        serde_json::to_value(self).map_err(|e| e.into())
     }
 }
