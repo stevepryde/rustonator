@@ -1,6 +1,10 @@
-use crate::traits::jsonobject::{JSONObject, JSONValue};
-use crate::traits::randenum::RandEnumFrom;
-use serde_json::json;
+use crate::traits::{
+    randenum::RandEnumFrom,
+    worldobject::{JsonError, ToJson},
+};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug)]
 pub enum EffectType {
@@ -26,7 +30,7 @@ impl RandEnumFrom<u8> for EffectType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Effect {
     pub effect_type: EffectType,
     pub remaining: f32,
@@ -52,21 +56,37 @@ impl Effect {
     }
 }
 
-impl JSONObject for Effect {
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "type": self.effect_type as u8,
-            "remaining": self.remaining,
-            "name": self.name,
-            "active": self.active
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EffectData {
+    effect_type: u8,
+    remaining: f32,
+    name: String,
+    active: bool,
+}
+
+impl TryFrom<serde_json::Value> for Effect {
+    type Error = JsonError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
+        let data: EffectData = serde_json::from_value(value)?;
+
+        Ok(Effect {
+            active: data.active,
+            name: data.name,
+            remaining: data.remaining,
+            effect_type: EffectType::from(data.effect_type),
         })
     }
+}
 
-    fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = JSONValue::new(data);
-        self.effect_type = EffectType::from(sv.get_u32("type") as u8);
-        self.remaining = sv.get_f32("remaining");
-        self.name = sv.get_string("name");
-        self.active = sv.get_bool("active");
+impl ToJson for Effect {
+    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
+        let data = EffectData {
+            effect_type: self.effect_type as u8,
+            remaining: self.remaining,
+            name: self.name.clone(),
+            active: self.active,
+        };
+        serde_json::to_value(data).map_err(|e| e.into())
     }
 }

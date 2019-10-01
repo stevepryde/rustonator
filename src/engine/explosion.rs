@@ -1,15 +1,20 @@
-use crate::engine::bomb::Bomb;
-use crate::engine::position::MapPosition;
-use crate::tools::itemstore::HasId;
-use crate::traits::jsonobject::{JSONObject, JSONValue};
-use crate::utils::misc::unix_timestamp;
-use serde_json::json;
+use crate::{
+    engine::{bomb::Bomb, position::MapPosition},
+    tools::itemstore::HasId,
+    traits::worldobject::{JsonError, ToJson},
+    utils::misc::unix_timestamp,
+};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::convert::TryFrom;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Explosion {
     id: u32,
     pid: String,
     pname: String,
     active: bool,
+    #[serde(flatten)]
     position: MapPosition,
     remaining: f32,
     harmful: bool,
@@ -38,7 +43,7 @@ impl Explosion {
         self.active
     }
 
-    pub fn position(&self) ->MapPosition {
+    pub fn position(&self) -> MapPosition {
         self.position
     }
 
@@ -55,33 +60,17 @@ impl Explosion {
     }
 }
 
-impl JSONObject for Explosion {
-    fn to_json(&self) -> serde_json::Value {
-        json!({
-            "id": self.id,
-            "pid": self.pid,
-            "pname": self.pname,
-            "active": self.active,
-            "mapX": self.position.x,
-            "mapY": self.position.y,
-            "remaining": self.remaining,
-            "harmful": self.harmful
-        })
+impl TryFrom<serde_json::Value> for Explosion {
+    type Error = JsonError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
+        serde_json::from_value(value).map_err(|e| e.into())
     }
+}
 
-    fn from_json(&mut self, data: &serde_json::Value) {
-        let sv = JSONValue::new(data);
-        self.id = sv.get_u32("id");
-        self.pid = sv.get_string("pid");
-        self.pname = sv.get_string("pname");
-        self.active = sv.get_bool("active");
-        self.position = MapPosition::new(sv.get_u32("mapX"), sv.get_u32("mapY"));
-        self.remaining = sv.get_f32("remaining");
-        self.harmful = sv.get_bool("harmful");
-
-        // NOTE: We lose timestamp in the client!
-        // TODO: It would assist AI if access to the timestamp was granted. Do we want this?
-        self.timestamp = 0;
+impl ToJson for Explosion {
+    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
+        serde_json::to_value(self).map_err(|e| e.into())
     }
 }
 
