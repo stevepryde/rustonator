@@ -1,6 +1,6 @@
 use crate::{
     component::action::Action,
-    engine::position::{MapPosition, PixelPositionF32},
+    engine::position::{MapPosition, PixelPositionF64},
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
@@ -100,15 +100,15 @@ impl MobTargetDir {
 pub struct Mob {
     id: u32,
     active: bool,
-    position: PixelPositionF32,
+    position: PixelPositionF64,
     action: Action,
-    speed: f32,
+    speed: f64,
     image: String,
     name: String,
 
     // Server only.
     target_mode: MobTargetMode,
-    target_remaining: f32,
+    target_remaining: f64,
 
     // Position of current target. Used by NearbyCell mode.
     target_position: MapPosition,
@@ -126,7 +126,7 @@ impl Default for Mob {
         Mob {
             id: 0,
             active: true,
-            position: PixelPositionF32::new(0.0, 0.0),
+            position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
             speed: 60.0, // pixels per second.
             image: String::from("mob1"),
@@ -151,11 +151,11 @@ impl Mob {
         Mob::default()
     }
 
-    pub fn position(&self) -> PixelPositionF32 {
+    pub fn position(&self) -> PixelPositionF64 {
         self.position
     }
 
-    pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f32) {
+    pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f64) {
         if tmp_action.is_empty() {
             return;
         }
@@ -167,8 +167,8 @@ impl Mob {
         } else {
             self.speed
         };
-        self.position.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
-        self.position.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
+        self.position.x += tmp_action.get_x() as f64 * delta_time * effective_speed;
+        self.position.y += tmp_action.get_y() as f64 * delta_time * effective_speed;
     }
 
     fn get_delta_for_dir(dir: MobTargetDir) -> (i32, i32) {
@@ -198,10 +198,10 @@ impl CanPass for Mob {
 pub struct MobData {
     id: u32,
     active: bool,
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
     action: Action,
-    speed: f32,
+    speed: f64,
     image: String,
     name: String,
 }
@@ -214,7 +214,7 @@ impl TryFrom<serde_json::Value> for Mob {
         Ok(Mob {
             id: data.id,
             active: data.active,
-            position: PixelPositionF32::new(data.x, data.y),
+            position: PixelPositionF64::new(data.x, data.y),
             action: data.action,
             speed: data.speed,
             image: data.image,

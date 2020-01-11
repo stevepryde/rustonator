@@ -33,13 +33,13 @@ impl RandEnumFrom<u8> for EffectType {
 #[derive(Debug, Clone)]
 pub struct Effect {
     pub effect_type: EffectType,
-    pub remaining: f32,
+    pub remaining: f64,
     pub name: String,
     pub active: bool,
 }
 
 impl Effect {
-    pub fn new(effect_type: EffectType, duration: f32) -> Self {
+    pub fn new(effect_type: EffectType, duration: f64) -> Self {
         Effect {
             effect_type,
             remaining: duration,
@@ -48,7 +48,7 @@ impl Effect {
         }
     }
 
-    pub fn tick(&mut self, delta_time: f32) {
+    pub fn tick(&mut self, delta_time: f64) {
         self.remaining -= delta_time;
         if self.remaining <= 0.0 {
             self.active = false;
@@ -59,7 +59,7 @@ impl Effect {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EffectData {
     effect_type: u8,
-    remaining: f32,
+    remaining: f64,
     name: String,
     active: bool,
 }

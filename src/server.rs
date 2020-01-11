@@ -1,11 +1,15 @@
-use crate::engine::bomb::Bomb;
-use crate::engine::config::GameConfig;
-use crate::engine::explosion::Explosion;
-use crate::engine::mob::Mob;
-use crate::engine::player::Player;
-use crate::engine::world::World;
-use crate::engine::worlddata::MobSpawner;
-use crate::tools::itemstore::ItemStore;
+use crate::{
+    engine::{
+        bomb::Bomb,
+        config::GameConfig,
+        explosion::Explosion,
+        mob::Mob,
+        player::Player,
+        world::World,
+        worlddata::MobSpawner,
+    },
+    tools::itemstore::ItemStore,
+};
 use std::collections::HashMap;
 
 pub struct GameServer {
@@ -41,7 +45,7 @@ impl GameServer {
         GameServer::default()
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, delta_time: f64) -> bool {
         // Update remaining time for all bombs and explosions.
         for explosion in self.explosions.iter_mut() {
             explosion.update(delta_time);
@@ -62,6 +66,8 @@ impl GameServer {
         }
 
         self.bombs.retain(|_, b| b.is_active());
+
+        true
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb) {

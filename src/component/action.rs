@@ -10,7 +10,7 @@ pub struct Action {
     fire: bool,
     id: u32,
     #[serde(rename = "deltaTime")]
-    deltatime: f32, // TODO: do I need this?
+    deltatime: f64, // TODO: do I need this?
 }
 
 impl Action {

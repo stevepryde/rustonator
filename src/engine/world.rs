@@ -3,7 +3,7 @@ use crate::{
         bomb::Bomb,
         config::GameConfig,
         explosion::Explosion,
-        position::{MapPosition, PixelPositionF32, SizeInPixels, SizeInTiles},
+        position::{MapPosition, PixelPositionF64, SizeInPixels, SizeInTiles},
         worlddata::{
             InternalCellData,
             InternalMobData,
@@ -39,8 +39,8 @@ impl WorldSize {
         let map_width = if width % 2 == 0 { width + 1 } else { width };
         let map_height = if height % 2 == 0 { height + 1 } else { height };
 
-        let chunk_width = (config.screen_width() as f32 / tile_width as f32) as u32 + 10;
-        let chunk_height = (config.screen_height() as f32 / tile_height as f32) as u32 + 10;
+        let chunk_width = (config.screen_width() as f64 / tile_width as f64) as u32 + 10;
+        let chunk_height = (config.screen_height() as f64 / tile_height as f64) as u32 + 10;
 
         WorldSize {
             map_size: SizeInTiles::new(map_width, map_height),
@@ -122,7 +122,7 @@ impl World {
                 CellType::Wall,
             );
 
-            for x in 1..((world.sizes.map_size.width as f32 / 2.0) as u32 - 2) {
+            for x in 1..((world.sizes.map_size.width as f64 / 2.0) as u32 - 2) {
                 world.set_cell(MapPosition::new(x * 2, y), CellType::Wall);
             }
         }
@@ -309,7 +309,7 @@ impl World {
         chunk
     }
 
-    pub fn is_nearby_entity(&self, pos: MapPosition, entities: &[PixelPositionF32]) -> bool {
+    pub fn is_nearby_entity(&self, pos: MapPosition, entities: &[PixelPositionF64]) -> bool {
         entities.iter().any(|p| {
             p.to_map_position(self.sizes.tile_size)
                 .is_within_range(pos, 4)
@@ -320,7 +320,7 @@ impl World {
         entities.iter().any(|e| e.is_within_range(pos, 4))
     }
 
-    pub fn populate_blocks(&mut self, entities: &[PixelPositionF32], map_entities: &[MapPosition]) {
+    pub fn populate_blocks(&mut self, entities: &[PixelPositionF64], map_entities: &[MapPosition]) {
         let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
@@ -355,16 +355,16 @@ impl World {
     pub fn add_mob_spawners(&mut self) -> Vec<MobSpawner> {
         let numx = 2;
         let numy = 2;
-        let stepx = self.sizes.map_size.width as f32 / numx as f32;
-        let stepy = self.sizes.map_size.height as f32 / numy as f32;
+        let stepx = self.sizes.map_size.width as f64 / numx as f64;
+        let stepy = self.sizes.map_size.height as f64 / numy as f64;
         let half_stepx = stepx / 2.0;
         let half_stepy = stepy / 2.0;
         let mut mob_spawners = Vec::new();
 
         for py in 0..numx {
             for px in 0..numy {
-                let mx = ((stepx * px as f32) + half_stepx) as u32;
-                let my = ((stepy * py as f32) + half_stepy) as u32;
+                let mx = ((stepx * px as f64) + half_stepx) as u32;
+                let my = ((stepy * py as f64) + half_stepy) as u32;
 
                 let mut blank = self.find_nearest_blank(MapPosition::new(mx, my));
                 if blank.x == 1 && blank.y == 1 {

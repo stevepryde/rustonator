@@ -13,8 +13,8 @@ impl ZonePosition {
     }
 
     pub fn from_map_position(pos: MapPosition, zone_size: SizeInTiles) -> Self {
-        let x = (pos.x as f32 / zone_size.width as f32) as u32;
-        let y = (pos.y as f32 / zone_size.height as f32) as u32;
+        let x = (pos.x as f64 / zone_size.width as f64) as u32;
+        let y = (pos.y as f64 / zone_size.height as f64) as u32;
         ZonePosition { x, y }
     }
 }
@@ -69,9 +69,10 @@ impl WorldZoneData {
         zone_height: u32,
         width_in_tiles: u32,
         height_in_tiles: u32,
-        quota_factor: f32,
-    ) -> Self {
-        let mut zones_across = (width_in_tiles as f32 / zone_width as f32) as usize;
+        quota_factor: f64,
+    ) -> Self
+    {
+        let mut zones_across = (width_in_tiles as f64 / zone_width as f64) as usize;
         let mut last_width = zone_width;
         let remainder_width = width_in_tiles as usize % zones_across;
         if remainder_width > 0 {
@@ -79,7 +80,7 @@ impl WorldZoneData {
             last_width = remainder_width as u32;
         }
 
-        let mut zones_down = (height_in_tiles as f32 / zone_height as f32) as usize;
+        let mut zones_down = (height_in_tiles as f64 / zone_height as f64) as usize;
         let mut last_height = zone_height;
         let remainder_height = height_in_tiles as usize % zones_down;
         if remainder_height > 0 {
@@ -106,7 +107,7 @@ impl WorldZoneData {
                     size: SizeInTiles::new(zwidth, zheight),
                     num_blocks: 0,
                     num_players: 0,
-                    block_quota: ((zwidth * zheight) as f32 * quota_factor) as u32,
+                    block_quota: ((zwidth * zheight) as f64 * quota_factor) as u32,
                 });
             }
         }
@@ -172,7 +173,8 @@ impl WorldZoneData {
         self.zones.iter()
     }
 
-    /// Return iterator providing WorldZone objects sorted by (quota - num_blocks) descending.
+    /// Return iterator providing WorldZone objects sorted by (quota -
+    /// num_blocks) descending.
     pub fn zone_iter_sorted_by_shortfall(&self) -> impl Iterator<Item = &WorldZone> {
         self.zones.iter().sorted_by(|a, b| {
             Ord::cmp(
