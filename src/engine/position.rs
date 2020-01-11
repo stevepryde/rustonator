@@ -34,22 +34,22 @@ pub struct PixelPosition<T> {
 }
 
 impl<T> PixelPosition<T>
-where T: From<f32> + Into<f32> + Copy
+where T: From<f64> + Into<f64> + Copy
 {
     pub fn new(x: T, y: T) -> Self {
         PixelPosition { x, y }
     }
 
     pub fn from_map_position(pos: MapPosition, tile_size: SizeInPixels) -> Self {
-        let x = T::from(pos.x as f32 * tile_size.width as f32 + (tile_size.width as f32 / 2.0));
-        let y = T::from(pos.y as f32 * tile_size.height as f32 + (tile_size.height as f32 / 2.0));
+        let x = T::from(pos.x as f64 * tile_size.width as f64 + (tile_size.width as f64 / 2.0));
+        let y = T::from(pos.y as f64 * tile_size.height as f64 + (tile_size.height as f64 / 2.0));
         Self::new(x, y)
     }
 
     pub fn to_map_position(&self, tile_size: SizeInPixels) -> MapPosition {
         MapPosition::new(
-            (self.x.into() / tile_size.width as f32) as u32,
-            (self.y.into() / tile_size.height as f32) as u32,
+            (self.x.into() / tile_size.width as f64) as u32,
+            (self.y.into() / tile_size.height as f64) as u32,
         )
     }
 
@@ -61,7 +61,7 @@ where T: From<f32> + Into<f32> + Copy
 }
 
 pub type PixelPositionU32 = PixelPosition<u32>;
-pub type PixelPositionF32 = PixelPosition<f32>;
+pub type PixelPositionF64 = PixelPosition<f64>;
 
 #[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct ChunkPosition {
@@ -75,8 +75,8 @@ impl ChunkPosition {
     }
 
     pub fn from_map_position(pos: MapPosition, chunk_size: SizeInTiles) -> Self {
-        let x = (pos.x as f32 / chunk_size.width as f32) as u32;
-        let y = (pos.y as f32 / chunk_size.height as f32) as u32;
+        let x = (pos.x as f64 / chunk_size.width as f64) as u32;
+        let y = (pos.y as f64 / chunk_size.height as f64) as u32;
         ChunkPosition { x, y }
     }
 
@@ -86,7 +86,7 @@ impl ChunkPosition {
         chunk_size: SizeInTiles,
     ) -> Self
     where
-        T: From<f32> + Into<f32> + Copy,
+        T: From<f64> + Into<f64> + Copy,
     {
         ChunkPosition::from_map_position(pos.to_map_position(tile_size), chunk_size)
     }

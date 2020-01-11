@@ -3,7 +3,7 @@ use crate::{
         action::Action,
         effect::{Effect, EffectType},
     },
-    engine::position::PixelPositionF32,
+    engine::position::PixelPositionF64,
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
@@ -28,12 +28,12 @@ bitflags! {
 pub struct Player {
     id: String,
     active: bool,
-    position: PixelPositionF32,
+    position: PixelPositionF64,
     action: Action,
-    speed: f32,
+    speed: f64,
     image: String,
     range: u32,
-    bomb_time: f32,
+    bomb_time: f64,
     max_bombs: u32,
     cur_bombs: u32,
     flags: PlayerFlags,
@@ -42,7 +42,7 @@ pub struct Player {
     rank: u32,
     effects: [Vec<Effect>; 2],
     effect_index: usize,
-    last_time: f32,
+    last_time: f64,
 }
 
 impl Default for Player {
@@ -50,7 +50,7 @@ impl Default for Player {
         Player {
             id: String::new(),
             active: true,
-            position: PixelPositionF32::new(0.0, 0.0),
+            position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
             speed: 200.0,
             image: String::from("p1"),
@@ -82,11 +82,11 @@ impl Player {
         self.name.as_str()
     }
 
-    pub fn position(&self) -> PixelPositionF32 {
+    pub fn position(&self) -> PixelPositionF64 {
         self.position
     }
 
-    pub fn bomb_time(&self) -> f32 {
+    pub fn bomb_time(&self) -> f64 {
         self.bomb_time
     }
 
@@ -94,12 +94,12 @@ impl Player {
         self.range
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, delta_time: f64) {
         let action = self.action.clone();
         self.update_with_temp_action(&action, delta_time);
     }
 
-    fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f32) {
+    fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
         let src_index = self.effect_index;
         let target_index = !self.effect_index;
 
@@ -123,8 +123,8 @@ impl Player {
         } else {
             self.speed
         };
-        self.position.x += tmp_action.get_x() as f32 * delta_time * effective_speed;
-        self.position.y += tmp_action.get_y() as f32 * delta_time * effective_speed;
+        self.position.x += tmp_action.get_x() as f64 * delta_time * effective_speed;
+        self.position.y += tmp_action.get_y() as f64 * delta_time * effective_speed;
     }
 
     fn add_effect(&mut self, effect: Effect) {
@@ -171,7 +171,7 @@ impl Player {
         self.flags.contains(flag)
     }
 
-    fn set_position(&mut self, pos: PixelPositionF32) {
+    fn set_position(&mut self, pos: PixelPositionF64) {
         self.position = pos;
     }
 
@@ -182,7 +182,7 @@ impl Player {
     fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
-            rand::thread_rng().gen_range(3.0f32, 8.0f32),
+            rand::thread_rng().gen_range(3.0f64, 8.0f64),
         );
         let name = effect.name.clone();
         self.add_effect(effect);
@@ -210,13 +210,13 @@ impl CanPass for Player {
 pub struct PlayerData {
     id: String,
     active: bool,
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
     action: Action,
-    speed: f32,
+    speed: f64,
     image: String,
     range: u32,
-    bomb_time: f32,
+    bomb_time: f64,
     max_bombs: u32,
     cur_bombs: u32,
     flags: PlayerFlags,
@@ -224,7 +224,7 @@ pub struct PlayerData {
     name: String,
     rank: u32,
     effects: Vec<serde_json::Value>,
-    last_time: f32,
+    last_time: f64,
 }
 
 impl TryFrom<serde_json::Value> for Player {
@@ -240,7 +240,7 @@ impl TryFrom<serde_json::Value> for Player {
         Ok(Player {
             id: data.id,
             active: data.active,
-            position: PixelPositionF32::new(data.x, data.y),
+            position: PixelPositionF64::new(data.x, data.y),
             action: data.action,
             speed: data.speed,
             image: data.image,

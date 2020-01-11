@@ -16,7 +16,7 @@ pub struct Explosion {
     active: bool,
     #[serde(flatten)]
     position: MapPosition,
-    remaining: f32,
+    remaining: f64,
     harmful: bool,
     timestamp: i64,
 }
@@ -47,7 +47,7 @@ impl Explosion {
         self.position
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, delta_time: f64) {
         self.remaining -= delta_time;
         if self.remaining <= 0.3 {
             self.harmful = false;

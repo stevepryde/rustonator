@@ -18,7 +18,7 @@ pub struct Bomb {
     active: bool,
     #[serde(flatten)]
     position: MapPosition,
-    remaining: f32,
+    remaining: f64,
     range: u32,
     timestamp: i64,
 }
@@ -57,7 +57,7 @@ impl Bomb {
         self.position
     }
 
-    pub fn tick(&mut self, delta_time: f32) -> Option<Explosion> {
+    pub fn tick(&mut self, delta_time: f64) -> Option<Explosion> {
         self.remaining -= delta_time;
         if self.remaining <= 0.0 {
             self.remaining = 0.0;
