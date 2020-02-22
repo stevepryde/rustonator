@@ -8,14 +8,19 @@ impl WorldData {
         WorldData(vec![0; (width * height) as usize])
     }
 
-    pub fn get_at_index(&self, index: usize) -> u8 {
-        // TODO: do we need a range check here?
-        self.0[index]
+    pub fn get_at_index(&self, index: usize) -> Option<u8> {
+        if index >= self.0.len() {
+            None
+        } else {
+            Some(self.0[index])
+        }
     }
 
     pub fn set_at_index(&mut self, index: usize, value: u8) {
-        // TODO: do we need a range check here?
-        self.0[index] = value;
+        // TODO: fail on bad index?
+        if index < self.0.len() {
+            self.0[index] = value;
+        }
     }
 
     pub fn get_slice(&self, index: usize, length: usize) -> &[u8] {
@@ -100,7 +105,7 @@ impl InternalMobData {
 
 #[derive(Debug, Clone)]
 pub struct MobSpawner {
-    position: MapPosition
+    position: MapPosition,
 }
 
 impl MobSpawner {

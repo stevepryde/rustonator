@@ -1,149 +1,102 @@
-use log::{debug, error};
+use log::{debug, error, info};
 
+use crate::error::ZResult;
 use crate::{comms::playercomm::PlayerComm, component::action::Action};
-use std::{
-    convert::TryFrom,
-    io,
-    io::ErrorKind,
-    net::{TcpListener, TcpStream},
-    sync::mpsc::{channel, Receiver, Sender},
-    thread::{spawn, JoinHandle},
-};
-use tungstenite::{accept_hdr, handshake::server::Request, Error, Message, WebSocket};
+use async_std::net::{TcpListener, TcpStream};
+use async_std::task;
+use async_tungstenite::{accept_async, accept_hdr_async, WebSocketStream};
+use futures::channel::mpsc::{channel, Receiver, Sender};
+use futures::stream::SplitStream;
+use futures::{SinkExt, StreamExt};
+use std::{convert::TryFrom, io, io::ErrorKind, net::SocketAddr};
+use tungstenite::handshake::server::{Request, Response};
 
-/// Start the websocket server on a new thread.
-/// Each connection will spawn its own thread on top of that.
-/// TODO: Implement connection limit.
-pub fn start_websocket_server(server_sender: Sender<PlayerComm>) -> JoinHandle<()> {
-    spawn(|| {
-        let mut next_player_id: u64 = 0;
-        let server = TcpListener::bind("0.0.0.0:3002").unwrap();
-        debug!("Websocket server listening on port 3002");
-        for r_stream in server.incoming() {
-            // TODO: set up channels and initialize player.
-            // This needs to assign a unique ID to the connection (sequential id would work
-            // ok) This would create the input buffer and the server would
-            // associate this id with the new player object.
-            // Server keeps its own list of write channels for each id.
-            //
-            // Can the server write whenever or does it need to send via channel here
-            // and then have this loop poll the channel and do the writes here?
-            //
-            // NOTE: the server does not handle read channels.
-            // Write directly to cache of player inputs here.
-            // Then the game server can just process a list of inputs each frame.
-            // Needs a limit of 1 input per frame - anything beyond
-            // this will be dropped or processed next frame. If the buffer
-            // fills up, inputs will be dropped (this could result from the
-            // server being too slow / overloaded, or clients attempting to cheat)
+/// Start async websocket server.
+/// NOTE: The caller can run this on a separate executor if needed.
+pub async fn spawn_websocket_server(server_sender: Sender<PlayerComm>) -> ZResult<()> {
+    let addr = "0.0.0.0:9002";
+    let listener = TcpListener::bind(&addr).await?;
+    info!("Websocket server listening on: {}", addr);
+    let mut next_player_id: u64 = 1;
 
-            let pid = next_player_id;
-            next_player_id += 1;
+    while let Ok((stream, _)) = listener.accept().await {
+        let peer = match stream.peer_addr() {
+            Ok(x) => x,
+            Err(e) => {
+                error!("Unable to get peer address: {}", e);
+                continue;
+            }
+        };
+        info!("Socket connected: {}", peer);
 
-            spawn(move || {
-                let callback = |_req: &Request| {
-                    // Let's add an additional header to our response to the client.
-                    Ok(Some(vec![(
-                        String::from("x-detonator-version"),
-                        String::from("0.1"),
-                    )]))
-                };
-                let stream = match r_stream {
-                    Ok(x) => x,
-                    Err(e) => {
-                        debug!("Unable to connect websocket stream: {}", e);
-                        return;
-                    }
-                };
-                if let Err(e) = stream.set_nonblocking(true) {
-                    error!("Error setting stream to non-blocking mode: {}", e);
-                    return;
-                }
+        let player_id = next_player_id;
+        next_player_id += 1;
 
-                let websocket = match accept_hdr(stream, callback) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        debug!("Error accepting websocket connection: {}", e);
-                        return;
-                    }
-                };
+        task::spawn(accept_connection(
+            peer,
+            stream,
+            player_id,
+            server_sender.clone(),
+        ));
+    }
 
-                // All ok, tell the server a new player has joined.
-                let (action_sender_to_server, player_receiver) = channel();
-                let (player_sender, framedata_receiver_from_server) = channel();
-                let player_comm = PlayerComm::new(pid, player_sender, player_receiver);
-                let server_sender_clone = server_sender.clone();
-
-                server_sender_clone.send(player_comm);
-
-                if let Err(e) = process_websocket(
-                    websocket,
-                    pid,
-                    action_sender_to_server,
-                    framedata_receiver_from_server,
-                ) {
-                    debug!("Websocket disconnected: {}", e);
-                }
-            });
-        }
-    })
+    Ok(())
 }
 
-/// Process the entire lifecycle of a single player's websocket connection.
-fn process_websocket(
-    mut websocket: WebSocket<TcpStream>,
-    pid: u64,
-    ws_sender: Sender<Action>,
-    ws_receiver: Receiver<serde_json::Value>,
-) -> tungstenite::Result<()>
-{
-    loop {
-        // TODO: This will burn up the CPU. Need to think more about using blocking IO
-        // instead. Or maybe I need async after all?
-        // Wish I could split the sender and receiver...
+async fn accept_connection(
+    peer: SocketAddr,
+    stream: TcpStream,
+    player_id: u64,
+    server_sender: Sender<PlayerComm>,
+) {
+    if let Err(e) = handle_connection(peer, stream, player_id, server_sender).await {
+        error!("Error processing connection: {:?}", e);
+    }
+}
 
-        // Options:
-        // 1. Separate websocket server - still leaves the problem of communicating over
-        //    unix/tcp socket using sync/threads
-        // 2. Convert to async - this seems more plausible but how do I solve the
-        // problem    of bad actors? If someone floods the network with
-        // websocket messages, the system    will try to handle them all. How do
-        // I rate-limit these?
-        // a. Disconnect clients if too many messages received
-        // b. Too many connection attempts? I can rate-limit join requests.
-        //    The websocket server should run on a separate thread anyway.
-        // 3. Best of both worlds. Both async and separate processes.
-        //    Separating the IO that talks to the outside world from the internal
-        // machinery    has its own benefits in terms of scaling. For now I'll
-        // attempt to write it    such that it's separated across a thread
-        // boundary anyway and can easily    be moved to a seprate process
-        // later.
+async fn handle_connection(
+    peer: SocketAddr,
+    stream: TcpStream,
+    player_id: u64,
+    server_sender: Sender<PlayerComm>,
+) -> ZResult<()> {
+    let mut ws_stream = accept_async(stream).await?;
 
-        // Did we receive any action from the player to send to the server?
-        match websocket.read_message() {
-            Ok(msg) => {
-                if msg.is_text() {
-                    // Put message on the input channel.
-                    // Serialize into Action.
-                    if let Ok(value) = serde_json::to_value(msg.to_string()) {
-                        if let Ok(action) = Action::try_from(value) {
-                            ws_sender.send(action);
-                        }
-                    }
+    info!("New websocket connection: {}", peer);
+
+    let (ws_tx, ws_rx) = ws_stream.split();
+
+    // All ok, tell the server a new player has joined.
+    let (comms_out_engine_tx, comms_out_ws_rx) = channel(30);
+    let (comms_in_ws_tx, comms_in_engine_rx) = channel(30);
+    let player_comm = PlayerComm::new(player_id, comms_out_engine_tx, comms_in_engine_rx);
+    let mut server_sender_clone = server_sender.clone();
+    server_sender_clone.send(player_comm).await?;
+
+    // TODO: spawn separate tasks for read/write, then return.
+    process_websocket_read(ws_rx, comms_in_ws_tx).await?;
+    Ok(())
+}
+
+async fn process_websocket_read(
+    mut ws_rx: SplitStream<WebSocketStream<TcpStream>>,
+    mut player_sender: Sender<serde_json::Value>,
+) -> ZResult<()> {
+    while let Some(msg) = ws_rx.next().await {
+        let msg = msg?;
+        if msg.is_binary() {
+            error!("Unexpected binary message received. Connection dropped.");
+            break;
+        }
+        if msg.is_text() {
+            // Put message on the input channel.
+            match serde_json::to_value(msg.to_string()) {
+                Ok(value) => player_sender.send(value).await?,
+                Err(e) => {
+                    error!("Unexpected message received: {}", e);
+                    break;
                 }
             }
-            Err(Error::Io(e)) => match e.kind() {
-                ErrorKind::WouldBlock => {}
-                _ => return Err(Error::Io(e)),
-            },
-            Err(e) => {
-                return Err(e);
-            }
-        }
-
-        // Did we get anything from the server to send to the player?
-        if let Ok(x) = ws_receiver.try_recv() {
-            websocket.write_message(Message::from(x.to_string()))?;
         }
     }
 
