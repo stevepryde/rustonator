@@ -5,12 +5,7 @@ use crate::{
         explosion::Explosion,
         position::{MapPosition, PixelPositionF64, SizeInPixels, SizeInTiles},
         worlddata::{
-            InternalCellData,
-            InternalMobData,
-            InternalWorldData,
-            MobSpawner,
-            WorldChunk,
-            WorldData,
+            InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
         },
         worldzone::WorldZoneData,
     },
@@ -146,12 +141,14 @@ impl World {
         ((pos.y * self.sizes.map_size.width) + pos.x) as usize
     }
 
-    pub fn get_cell(&self, pos: MapPosition) -> CellType {
-        CellType::from(self.data.get_at_index(self.get_index(pos)))
+    pub fn get_cell(&self, pos: MapPosition) -> Option<CellType> {
+        self.data
+            .get_at_index(self.get_index(pos))
+            .map(CellType::from)
     }
 
     pub fn set_cell(&mut self, pos: MapPosition, value: CellType) {
-        if let CellType::Mystery = self.get_cell(pos) {
+        if let Some(CellType::Mystery) = self.get_cell(pos) {
             self.zones.del_block_at_map_xy(pos);
         }
         if let CellType::Mystery = value {
@@ -161,7 +158,7 @@ impl World {
     }
 
     pub fn find_nearest_blank(&self, pos: MapPosition) -> MapPosition {
-        if let CellType::Empty = self.get_cell(pos) {
+        if let Some(CellType::Empty) = self.get_cell(pos) {
             return pos;
         }
 
@@ -184,8 +181,10 @@ impl World {
                 let cy = pos.y - radius;
                 let start_index = self.get_index(MapPosition::new(startx as u32, cy));
                 for offset in 0..(endx - startx) {
-                    if let CellType::Empty =
-                        CellType::from(self.data.get_at_index(start_index + offset))
+                    if let Some(CellType::Empty) = self
+                        .data
+                        .get_at_index(start_index + offset)
+                        .map(CellType::from)
                     {
                         return MapPosition::new((startx + offset) as u32, cy);
                     }
@@ -197,8 +196,10 @@ impl World {
             if cy < self.sizes.map_size.height - 1 {
                 let start_index = self.get_index(MapPosition::new(startx as u32, cy));
                 for offset in 0..(endx - startx) {
-                    if let CellType::Empty =
-                        CellType::from(self.data.get_at_index(start_index + offset))
+                    if let Some(CellType::Empty) = self
+                        .data
+                        .get_at_index(start_index + offset)
+                        .map(CellType::from)
                     {
                         return MapPosition::new((startx + offset) as u32, cy);
                     }
@@ -222,7 +223,7 @@ impl World {
                 let cx = pos.x - radius;
 
                 for y in starty..endy {
-                    if let CellType::Empty = self.get_cell(MapPosition::new(cx, y as u32)) {
+                    if let Some(CellType::Empty) = self.get_cell(MapPosition::new(cx, y as u32)) {
                         return MapPosition::new(cx, y as u32);
                     }
                 }
@@ -232,7 +233,7 @@ impl World {
             let cx = pos.x + radius;
             if cx < self.sizes.map_size.width - 1 {
                 for y in starty..endy {
-                    if let CellType::Empty = self.get_cell(MapPosition::new(cx, y as u32)) {
+                    if let Some(CellType::Empty) = self.get_cell(MapPosition::new(cx, y as u32)) {
                         return MapPosition::new(cx, y as u32);
                     }
                 }
@@ -270,16 +271,16 @@ impl World {
             let pos = self.find_nearest_blank(MapPosition::new(tx, ty));
 
             let mut count = 0;
-            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x - 1, pos.y)) {
+            if let Some(CellType::Empty) = self.get_cell(MapPosition::new(pos.x - 1, pos.y)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x + 1, pos.y)) {
+            if let Some(CellType::Empty) = self.get_cell(MapPosition::new(pos.x + 1, pos.y)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x, pos.y - 1)) {
+            if let Some(CellType::Empty) = self.get_cell(MapPosition::new(pos.x, pos.y - 1)) {
                 count += 1;
             }
-            if let CellType::Empty = self.get_cell(MapPosition::new(pos.x, pos.y + 1)) {
+            if let Some(CellType::Empty) = self.get_cell(MapPosition::new(pos.x, pos.y + 1)) {
                 count += 1;
             }
 
