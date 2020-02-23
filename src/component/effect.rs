@@ -1,12 +1,9 @@
-use crate::traits::{
-    randenum::RandEnumFrom,
-    worldobject::{JsonError, ToJson},
-};
+use crate::traits::randenum::RandEnumFrom;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
 pub enum EffectType {
     SpeedUp = 0,
     SlowDown = 1,
@@ -30,7 +27,7 @@ impl RandEnumFrom<u8> for EffectType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Effect {
     pub effect_type: EffectType,
     pub remaining: f64,
@@ -53,40 +50,5 @@ impl Effect {
         if self.remaining <= 0.0 {
             self.active = false;
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct EffectData {
-    effect_type: u8,
-    remaining: f64,
-    name: String,
-    active: bool,
-}
-
-impl TryFrom<serde_json::Value> for Effect {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        let data: EffectData = serde_json::from_value(value)?;
-
-        Ok(Effect {
-            active: data.active,
-            name: data.name,
-            remaining: data.remaining,
-            effect_type: EffectType::from(data.effect_type),
-        })
-    }
-}
-
-impl ToJson for Effect {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        let data = EffectData {
-            effect_type: self.effect_type as u8,
-            remaining: self.remaining,
-            name: self.name.clone(),
-            active: self.active,
-        };
-        serde_json::to_value(data).map_err(|e| e.into())
     }
 }

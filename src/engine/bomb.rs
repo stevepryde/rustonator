@@ -1,33 +1,39 @@
+use crate::engine::player::PlayerId;
 use crate::{
     engine::{explosion::Explosion, player::Player, position::MapPosition},
     tools::itemstore::HasId,
-    traits::worldobject::{JsonError, ToJson},
     utils::misc::unix_timestamp,
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
 
-// TODO: use type system for ids for better type safety.
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BombId(u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl From<u64> for BombId {
+    fn from(value: u64) -> Self {
+        BombId(value)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Bomb {
-    id: u32,
-    pid: String,
+    id: BombId,
+    pid: PlayerId,
     pname: String,
     active: bool,
     #[serde(flatten)]
     position: MapPosition,
-    remaining: f64,
-    range: u32,
-    timestamp: i64,
+    remaining: f64, // TODO: wrap this in a newtype TimeRemaining(f64)
+    range: u32,     // TODO: wrap this in a newtype BombRange(u32)
+    timestamp: i64, // TODO: wrap this in a newtype Timestamp(i64)
 }
 
 impl Bomb {
     pub fn new(player: &Player, position: MapPosition) -> Self {
         Bomb {
-            id: 0,
-            pid: player.id().to_owned(),
+            id: BombId::from(0),
+            pid: player.id(),
             pname: player.name().to_owned(),
             active: true,
             position,
@@ -37,7 +43,7 @@ impl Bomb {
         }
     }
 
-    pub fn id(&self) -> u32 {
+    pub fn id(&self) -> BombId {
         self.id
     }
 
@@ -45,8 +51,8 @@ impl Bomb {
         self.active
     }
 
-    pub fn pid(&self) -> &str {
-        self.pid.as_str()
+    pub fn pid(&self) -> PlayerId {
+        self.pid
     }
 
     pub fn pname(&self) -> &str {
@@ -69,22 +75,8 @@ impl Bomb {
     }
 }
 
-impl TryFrom<serde_json::Value> for Bomb {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        serde_json::from_value(value).map_err(|e| e.into())
-    }
-}
-
-impl ToJson for Bomb {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        serde_json::to_value(self).map_err(|e| e.into())
-    }
-}
-
-impl HasId for Bomb {
-    fn set_id(&mut self, id: u32) {
+impl HasId<BombId> for Bomb {
+    fn set_id(&mut self, id: BombId) {
         self.id = id;
     }
 }

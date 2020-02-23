@@ -1,17 +1,25 @@
+use crate::engine::player::PlayerId;
 use crate::{
     engine::{bomb::Bomb, position::MapPosition},
     tools::itemstore::HasId,
-    traits::worldobject::{JsonError, ToJson},
     utils::misc::unix_timestamp,
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ExplosionId(u64);
+
+impl From<u64> for ExplosionId {
+    fn from(value: u64) -> Self {
+        ExplosionId(value)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Explosion {
-    id: u32,
-    pid: String,
+    id: ExplosionId,
+    pid: PlayerId,
     pname: String,
     active: bool,
     #[serde(flatten)]
@@ -24,8 +32,8 @@ pub struct Explosion {
 impl Explosion {
     pub fn new(bomb: Option<&Bomb>, position: MapPosition) -> Self {
         Explosion {
-            id: 0,
-            pid: bomb.map_or(String::new(), |x| x.pid().to_owned()),
+            id: ExplosionId::from(0),
+            pid: bomb.map_or(PlayerId::from(0), |x| x.pid()),
             pname: bomb.map_or(String::new(), |x| x.pname().to_owned()),
             active: true,
             position,
@@ -35,7 +43,7 @@ impl Explosion {
         }
     }
 
-    pub fn id(&self) -> u32 {
+    pub fn id(&self) -> ExplosionId {
         self.id
     }
 
@@ -60,22 +68,8 @@ impl Explosion {
     }
 }
 
-impl TryFrom<serde_json::Value> for Explosion {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        serde_json::from_value(value).map_err(|e| e.into())
-    }
-}
-
-impl ToJson for Explosion {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        serde_json::to_value(self).map_err(|e| e.into())
-    }
-}
-
-impl HasId for Explosion {
-    fn set_id(&mut self, id: u32) {
+impl HasId<ExplosionId> for Explosion {
+    fn set_id(&mut self, id: ExplosionId) {
         self.id = id;
     }
 }
