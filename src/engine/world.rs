@@ -1,24 +1,21 @@
+use crate::engine::bomb::BombId;
+use crate::engine::explosion::ExplosionId;
 use crate::{
     engine::{
-        bomb::Bomb,
         config::GameConfig,
-        explosion::Explosion,
         position::{MapPosition, PixelPositionF64, SizeInPixels, SizeInTiles},
         worlddata::{
             InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
         },
         worldzone::WorldZoneData,
     },
-    traits::{
-        celltypes::CellType,
-        worldobject::{JsonError, ToJson},
-    },
+    traits::celltypes::CellType,
 };
 use rand::Rng;
-use serde::{Deserialize, Serialize};
-use serde_json;
-use std::{collections::HashSet, convert::TryFrom};
+use serde::Serialize;
+use std::collections::HashSet;
 
+#[derive(Debug, Serialize)]
 pub struct WorldSize {
     map_size: SizeInTiles,
     tile_size: SizeInPixels,
@@ -42,44 +39,6 @@ impl WorldSize {
             tile_size: SizeInPixels::new(tile_width, tile_height),
             chunk_size: SizeInTiles::new(chunk_width, chunk_height),
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorldSizeData {
-    width: u32,
-    height: u32,
-    tileWidth: u32,
-    tileHeight: u32,
-    chunkWidth: u32,
-    chunkHeight: u32,
-}
-
-impl TryFrom<serde_json::Value> for WorldSize {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        let data: WorldSizeData = serde_json::from_value(value)?;
-
-        Ok(WorldSize {
-            map_size: SizeInTiles::new(data.width, data.height),
-            tile_size: SizeInPixels::new(data.tileWidth, data.tileHeight),
-            chunk_size: SizeInTiles::new(data.chunkWidth, data.chunkHeight),
-        })
-    }
-}
-
-impl ToJson for WorldSize {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        let data = WorldSizeData {
-            width: self.map_size.width,
-            height: self.map_size.height,
-            tileWidth: self.tile_size.width,
-            tileHeight: self.tile_size.height,
-            chunkWidth: self.chunk_size.width,
-            chunkHeight: self.chunk_size.height,
-        };
-        serde_json::to_value(data).map_err(|e| e.into())
     }
 }
 
@@ -125,12 +84,12 @@ impl World {
         world
     }
 
-    pub fn add_bomb(&mut self, bomb_id: u32, pos: MapPosition) {
+    pub fn add_bomb(&mut self, bomb_id: BombId, pos: MapPosition) {
         self.data_internal
             .set_at_index(self.get_index(pos), InternalCellData::Bomb(bomb_id));
     }
 
-    pub fn add_explosion(&mut self, explosion_id: u32, pos: MapPosition) {
+    pub fn add_explosion(&mut self, explosion_id: ExplosionId, pos: MapPosition) {
         self.data_internal.set_at_index(
             self.get_index(pos),
             InternalCellData::Explosion(explosion_id),

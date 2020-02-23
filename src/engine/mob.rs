@@ -4,13 +4,10 @@ use crate::{
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
-        worldobject::{JsonError, ToJson},
     },
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
@@ -52,6 +49,7 @@ impl RandEnumFrom<u8> for MobTargetMode {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum MobTargetDir {
     Up = 0,
     Right = 1,
@@ -97,16 +95,18 @@ impl MobTargetDir {
     }
 }
 
-pub struct Mob {
-    id: u32,
-    active: bool,
-    position: PixelPositionF64,
-    action: Action,
-    speed: f64,
-    image: String,
-    name: String,
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct MobId(u64);
 
-    // Server only.
+impl From<u64> for MobId {
+    fn from(value: u64) -> Self {
+        MobId(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MobServerData {
     target_mode: MobTargetMode,
     target_remaining: f64,
 
@@ -121,10 +121,24 @@ pub struct Mob {
     danger: bool, // Triggers smart mob to GTFO.
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct Mob {
+    id: MobId,
+    active: bool,
+    #[serde(flatten)]
+    position: PixelPositionF64,
+    action: Action,
+    speed: f64,
+    image: String,
+    name: String,
+    #[serde(skip)]
+    server_data: MobServerData,
+}
+
 impl Default for Mob {
     fn default() -> Self {
         Mob {
-            id: 0,
+            id: MobId::from(0),
             active: true,
             position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
@@ -133,15 +147,17 @@ impl Default for Mob {
             name: String::new(),
 
             // Server init.
-            target_mode: MobTargetMode::NearbyCell,
-            target_remaining: 0.0,
-            target_position: MapPosition::new(0, 0),
-            old_position: MapPosition::new(0, 0),
-            target_player: String::new(),
-            target_dir: MobTargetDir::Up,
-            range: 8,
-            smart: rand::thread_rng().gen_range(0, 10) > 7,
-            danger: false,
+            server_data: MobServerData {
+                target_mode: MobTargetMode::NearbyCell,
+                target_remaining: 0.0,
+                target_position: MapPosition::new(0, 0),
+                old_position: MapPosition::new(0, 0),
+                target_player: String::new(),
+                target_dir: MobTargetDir::Up,
+                range: 8,
+                smart: rand::thread_rng().gen_range(0, 10) > 7,
+                danger: false,
+            },
         }
     }
 }
@@ -191,51 +207,5 @@ impl CanPass for Mob {
             CellType::Bomb => false,
             _ => true,
         }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct MobData {
-    id: u32,
-    active: bool,
-    x: f64,
-    y: f64,
-    action: Action,
-    speed: f64,
-    image: String,
-    name: String,
-}
-
-impl TryFrom<serde_json::Value> for Mob {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        let data: MobData = serde_json::from_value(value)?;
-        Ok(Mob {
-            id: data.id,
-            active: data.active,
-            position: PixelPositionF64::new(data.x, data.y),
-            action: data.action,
-            speed: data.speed,
-            image: data.image,
-            name: data.name,
-            ..Default::default()
-        })
-    }
-}
-
-impl ToJson for Mob {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        let data = MobData {
-            id: self.id,
-            active: self.active,
-            x: self.position.x,
-            y: self.position.y,
-            action: self.action.clone(),
-            speed: self.speed,
-            image: self.image.clone(),
-            name: self.name.clone(),
-        };
-        serde_json::to_value(data).map_err(|e| e.into())
     }
 }

@@ -1,3 +1,5 @@
+use crate::engine::bomb::BombId;
+use crate::engine::explosion::ExplosionId;
 use crate::engine::position::MapPosition;
 
 #[derive(Debug, Clone)]
@@ -61,8 +63,8 @@ impl WorldChunk {
 #[derive(Debug, Clone)]
 pub enum InternalCellData {
     Empty,
-    Bomb(u32),
-    Explosion(u32),
+    Bomb(BombId),
+    Explosion(ExplosionId),
 }
 
 #[derive(Debug, Clone)]

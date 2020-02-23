@@ -1,16 +1,18 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 
-pub trait HasId {
-    fn set_id(&mut self, id: u32);
+pub trait HasId<I: From<u64>> {
+    fn set_id(&mut self, id: I);
 }
 
 #[derive(Debug)]
-pub struct ItemStore<T: HasId> {
-    items: HashMap<u32, T>,
-    next_id: u32,
+pub struct ItemStore<I: From<u64> + Debug + Hash + Eq, T: HasId<I>> {
+    items: HashMap<I, T>,
+    next_id: u64,
 }
 
-impl<T: HasId> Default for ItemStore<T> {
+impl<I: From<u64> + Debug + Hash + Eq, T: HasId<I>> Default for ItemStore<I, T> {
     fn default() -> Self {
         ItemStore {
             items: HashMap::new(),
@@ -19,38 +21,38 @@ impl<T: HasId> Default for ItemStore<T> {
     }
 }
 
-impl<T: HasId> ItemStore<T> {
+impl<I: Clone + From<u64> + Debug + Hash + Eq, T: HasId<I>> ItemStore<I, T> {
     pub fn new() -> Self {
         ItemStore::default()
     }
 
-    fn get_next_id(&mut self) -> u32 {
+    fn get_next_id(&mut self) -> I {
         let next = self.next_id;
         self.next_id += 1;
-        next
+        next.into()
     }
 
-    pub fn add(&mut self, item: T) -> u32 {
+    pub fn add(&mut self, item: T) -> I {
         let id = self.get_next_id();
         let mut item = item;
-        item.set_id(id);
-        self.items.insert(id, item);
+        item.set_id(id.clone());
+        self.items.insert(id.clone(), item);
         id
     }
 
-    pub fn destroy(&mut self, id: u32) {
+    pub fn destroy(&mut self, id: I) {
         if self.items.contains_key(&id) {
             self.items.remove(&id);
         }
     }
 
-    pub fn get(&self, id: u32) -> Option<&T> {
+    pub fn get(&self, id: I) -> Option<&T> {
         self.items.get(&id)
     }
 
-    pub fn replace(&mut self, id: u32, item: T) {
+    pub fn replace(&mut self, id: I, item: T) {
         let mut item = item;
-        item.set_id(id);
+        item.set_id(id.clone());
         self.items.insert(id, item);
     }
 
@@ -64,7 +66,7 @@ impl<T: HasId> ItemStore<T> {
 
     pub fn retain<F>(&mut self, f: F)
     where
-        F: FnMut(&u32, &mut T) -> bool,
+        F: FnMut(&I, &mut T) -> bool,
     {
         self.items.retain(f);
     }

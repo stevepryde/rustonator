@@ -1,12 +1,9 @@
+use crate::engine::bomb::BombId;
+use crate::engine::explosion::ExplosionId;
 use crate::{
     engine::{
-        bomb::Bomb,
-        config::GameConfig,
-        explosion::Explosion,
-        mob::Mob,
-        player::Player,
-        world::World,
-        worlddata::MobSpawner,
+        bomb::Bomb, config::GameConfig, explosion::Explosion, mob::Mob, player::Player,
+        world::World, worlddata::MobSpawner,
     },
     tools::itemstore::ItemStore,
 };
@@ -18,8 +15,8 @@ pub struct GameServer {
     mob_spawners: Vec<MobSpawner>,
     players: HashMap<String, Player>,
     mobs: HashMap<u32, Mob>,
-    bombs: ItemStore<Bomb>,
-    explosions: ItemStore<Explosion>,
+    bombs: ItemStore<BombId, Bomb>,
+    explosions: ItemStore<ExplosionId, Explosion>,
 }
 
 impl Default for GameServer {

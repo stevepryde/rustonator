@@ -7,14 +7,11 @@ use crate::{
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
-        worldobject::{JsonError, ToJson},
     },
 };
 use bitflags::bitflags;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
 
 bitflags! {
     #[derive(Default, Serialize, Deserialize)]
@@ -24,10 +21,21 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PlayerId(u64);
+
+impl From<u64> for PlayerId {
+    fn from(value: u64) -> Self {
+        PlayerId(value)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Player {
-    id: String,
+    id: PlayerId,
     active: bool,
+    #[serde(flatten)]
     position: PixelPositionF64,
     action: Action,
     speed: f64,
@@ -40,15 +48,16 @@ pub struct Player {
     score: u32,
     name: String,
     rank: u32,
-    effects: [Vec<Effect>; 2],
-    effect_index: usize,
+    effects: Vec<Effect>,
+    #[serde(skip)]
+    effects_cache: Vec<Effect>,
     last_time: f64,
 }
 
 impl Default for Player {
     fn default() -> Self {
         Player {
-            id: String::new(),
+            id: PlayerId::from(0),
             active: true,
             position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
@@ -62,8 +71,8 @@ impl Default for Player {
             score: 0,
             name: String::new(),
             rank: 0,
-            effects: [Vec::new(), Vec::new()],
-            effect_index: 0,
+            effects: Vec::new(),
+            effects_cache: Vec::new(),
             last_time: 0.0,
         }
     }
@@ -74,8 +83,8 @@ impl Player {
         Player::default()
     }
 
-    pub fn id(&self) -> &str {
-        self.id.as_str()
+    pub fn id(&self) -> PlayerId {
+        self.id
     }
 
     pub fn name(&self) -> &str {
@@ -100,21 +109,17 @@ impl Player {
     }
 
     fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
-        let src_index = self.effect_index;
-        let target_index = !self.effect_index;
-
-        self.effects[target_index].clear();
-        while !self.effects[src_index].is_empty() {
-            if let Some(x) = self.effects[src_index].pop() {
+        std::mem::swap(&mut self.effects, &mut self.effects_cache);
+        self.effects.clear();
+        while !self.effects_cache.is_empty() {
+            if let Some(x) = self.effects_cache.pop() {
                 if x.active {
-                    self.effects[target_index].push(x);
+                    self.effects.push(x);
                 } else {
                     self.undo_effect(&x);
                 }
             }
         }
-
-        self.effect_index = target_index;
 
         let effective_speed = if self.speed < 50.0 {
             50.0
@@ -142,7 +147,7 @@ impl Player {
                 self.add_flag(PlayerFlags::INVINCIBLE);
             }
         }
-        self.effects[self.effect_index].push(effect);
+        self.effects.push(effect);
     }
 
     fn undo_effect(&mut self, effect: &Effect) {
@@ -203,90 +208,5 @@ impl CanPass for Player {
             CellType::Bomb => self.has_flag(PlayerFlags::WALK_THROUGH_BOMBS),
             _ => true,
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlayerData {
-    id: String,
-    active: bool,
-    x: f64,
-    y: f64,
-    action: Action,
-    speed: f64,
-    image: String,
-    range: u32,
-    bomb_time: f64,
-    max_bombs: u32,
-    cur_bombs: u32,
-    flags: PlayerFlags,
-    score: u32,
-    name: String,
-    rank: u32,
-    effects: Vec<serde_json::Value>,
-    last_time: f64,
-}
-
-impl TryFrom<serde_json::Value> for Player {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        let data: PlayerData = serde_json::from_value(value)?;
-        let mut effects = Vec::new();
-        for v in data.effects.into_iter() {
-            effects.push(Effect::try_from(v)?);
-        }
-
-        Ok(Player {
-            id: data.id,
-            active: data.active,
-            position: PixelPositionF64::new(data.x, data.y),
-            action: data.action,
-            speed: data.speed,
-            image: data.image,
-            range: data.range,
-            bomb_time: data.bomb_time,
-            max_bombs: data.max_bombs,
-            cur_bombs: data.cur_bombs,
-            flags: data.flags,
-            score: data.score,
-            name: data.name,
-            rank: data.rank,
-            effects: [effects, Vec::new()],
-            effect_index: 0,
-            last_time: data.last_time,
-            ..Default::default()
-        })
-    }
-}
-
-impl ToJson for Player {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        let mut effect_data = Vec::new();
-        for effect in &self.effects[self.effect_index] {
-            effect_data.push(effect.to_json()?);
-        }
-
-        let data = PlayerData {
-            id: self.id.clone(),
-            active: self.active,
-            x: self.position.x,
-            y: self.position.y,
-            action: self.action.clone(),
-            speed: self.speed,
-            image: self.image.clone(),
-            range: self.range,
-            bomb_time: self.bomb_time,
-            max_bombs: self.max_bombs,
-            cur_bombs: self.cur_bombs,
-            flags: self.flags,
-            score: self.score,
-            name: self.name.clone(),
-            rank: self.rank,
-            effects: effect_data,
-            last_time: self.last_time,
-        };
-
-        serde_json::to_value(data).map_err(|e| e.into())
     }
 }

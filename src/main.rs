@@ -37,15 +37,21 @@ use crate::comms::websocket::spawn_websocket_server;
 use async_std::task;
 use futures::channel::mpsc::channel;
 
+use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
 use crate::error::ZResult;
+use fern;
+use futures::SinkExt;
 use log::info;
 
 fn main() {
+    init_logging();
+
     let (player_join_tx, mut player_join_rx) = channel(30);
     let handle_ws = task::spawn(spawn_websocket_server(player_join_tx));
 
     let mut game_server = GameServer::new();
 
+    let mut players = Vec::new();
     // Limit max FPS.
     let min_timeslice: f64 = 1.0 / 60.0;
     let handle_main = task::spawn(async move {
@@ -60,9 +66,33 @@ fn main() {
             }
             last_frame = Instant::now();
             // Have any players joined?
+            // TODO: create playermanager to manage player events.
             if let Ok(x) = player_join_rx.try_next() {
-                info!("Player joined: {:?}", x);
+                match x {
+                    Some(PlayerConnectEvent::Connected(p)) => {
+                        info!("Player connected: {:?}", p);
+                        players.push(p);
+                    }
+                    Some(PlayerConnectEvent::Disconnected(pid)) => {
+                        info!("Player {:?} disconnected", pid);
+                    }
+                    None => {
+                        info!("Unknown player event!");
+                    }
+                }
             }
+            // TODO: feed player comms into server using playermanager.
+            // for p in players.iter_mut() {
+            //     if let Ok(x) = p.receiver.try_next() {
+            //         info!("Player {:?} received {:?}", p.id, x);
+            //         p.sender
+            //             .send(PlayerMessage::new(
+            //                 "HELLO",
+            //                 serde_json::json!({"my": "data"}),
+            //             ))
+            //             .await;
+            //     }
+            // }
             if !game_server.update(delta_time) {
                 break;
             }
@@ -85,4 +115,25 @@ fn main() {
             eprintln!("Websocket Error: {:?}", e);
         }
     });
+}
+
+fn init_logging() {
+    // let mut log_file = path.clone();
+    // log_file.push("test.log");
+
+    fern::Dispatch::new()
+        .level(log::LevelFilter::Off)
+        .level_for("rustonator", log::LevelFilter::Debug)
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .chain(std::io::stdout())
+        .apply()
+        .expect("Error setting up logging");
 }

@@ -1,7 +1,4 @@
-use crate::traits::worldobject::{JsonError, ToJson};
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::convert::TryFrom;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
@@ -53,19 +50,5 @@ impl Action {
         self.x = Self::clamp(x);
         self.y = Self::clamp(y);
         self.fire = fire;
-    }
-}
-
-impl TryFrom<serde_json::Value> for Action {
-    type Error = JsonError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, JsonError> {
-        serde_json::from_value(value).map_err(|e| e.into())
-    }
-}
-
-impl ToJson for Action {
-    fn to_json(&self) -> Result<serde_json::Value, JsonError> {
-        serde_json::to_value(self).map_err(|e| e.into())
     }
 }

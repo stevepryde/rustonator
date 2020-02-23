@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 // Get the difference between two u32 values.
 fn diffu32(a: u32, b: u32) -> u32 {
@@ -9,7 +9,7 @@ fn diffu32(a: u32, b: u32) -> u32 {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize)]
 pub struct MapPosition {
     #[serde(rename = "mapX")]
     pub x: u32,
@@ -27,14 +27,15 @@ impl MapPosition {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Hash, PartialEq)]
-pub struct PixelPosition<T> {
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Serialize)]
+pub struct PixelPosition<T: Serialize> {
     pub x: T,
     pub y: T,
 }
 
-impl<T> PixelPosition<T>
-where T: From<f64> + Into<f64> + Copy
+impl<T: Serialize> PixelPosition<T>
+where
+    T: From<f64> + Into<f64> + Copy,
 {
     pub fn new(x: T, y: T) -> Self {
         PixelPosition { x, y }
@@ -63,9 +64,11 @@ where T: From<f64> + Into<f64> + Copy
 pub type PixelPositionU32 = PixelPosition<u32>;
 pub type PixelPositionF64 = PixelPosition<f64>;
 
-#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize)]
 pub struct ChunkPosition {
+    #[serde(rename = "chunkX")]
     pub x: u32,
+    #[serde(rename = "chunkY")]
     pub y: u32,
 }
 
@@ -86,15 +89,17 @@ impl ChunkPosition {
         chunk_size: SizeInTiles,
     ) -> Self
     where
-        T: From<f64> + Into<f64> + Copy,
+        T: From<f64> + Into<f64> + Serialize + Copy,
     {
         ChunkPosition::from_map_position(pos.to_map_position(tile_size), chunk_size)
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize)]
 pub struct SizeInPixels {
+    #[serde(rename = "widthInPixels")]
     pub width: u32,
+    #[serde(rename = "heightInPixels")]
     pub height: u32,
 }
 
@@ -104,9 +109,11 @@ impl SizeInPixels {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize)]
 pub struct SizeInTiles {
+    #[serde(rename = "widthInTiles")]
     pub width: u32,
+    #[serde(rename = "heightInTiles")]
     pub height: u32,
 }
 
