@@ -1,5 +1,8 @@
+use crate::comms::playercomm::PlayerConnectEvent;
 use crate::engine::bomb::BombId;
 use crate::engine::explosion::ExplosionId;
+use crate::engine::mob::MobId;
+use crate::engine::player::PlayerId;
 use crate::{
     engine::{
         bomb::Bomb, config::GameConfig, explosion::Explosion, mob::Mob, player::Player,
@@ -7,20 +10,23 @@ use crate::{
     },
     tools::itemstore::ItemStore,
 };
+use log::*;
 use std::collections::HashMap;
+use tokio::sync::mpsc::Receiver;
 
 pub struct GameServer {
     config: GameConfig,
     world: World,
     mob_spawners: Vec<MobSpawner>,
-    players: HashMap<String, Player>,
-    mobs: HashMap<u32, Mob>,
+    players_rx: Receiver<PlayerConnectEvent>,
+    players: HashMap<PlayerId, Player>,
+    mobs: HashMap<MobId, Mob>,
     bombs: ItemStore<BombId, Bomb>,
     explosions: ItemStore<ExplosionId, Explosion>,
 }
 
-impl Default for GameServer {
-    fn default() -> Self {
+impl GameServer {
+    pub fn new(players_rx: Receiver<PlayerConnectEvent>) -> Self {
         let config = GameConfig::new();
         let mut world = World::new(50, 50, &config);
         let mob_spawners = world.add_mob_spawners();
@@ -29,20 +35,18 @@ impl Default for GameServer {
             config,
             world,
             mob_spawners,
+            players_rx,
             players: HashMap::new(),
             mobs: HashMap::new(),
             bombs: ItemStore::new(),
             explosions: ItemStore::new(),
         }
     }
-}
 
-impl GameServer {
-    pub fn new() -> Self {
-        GameServer::default()
-    }
+    pub async fn update(&mut self, delta_time: f64) -> bool {
+        self.player_connect_events().await;
+        self.player_inputs().await;
 
-    pub fn update(&mut self, delta_time: f64) -> bool {
         // Update remaining time for all bombs and explosions.
         for explosion in self.explosions.iter_mut() {
             explosion.update(delta_time);
@@ -77,5 +81,37 @@ impl GameServer {
         let pos = explosion.position();
         let id = self.explosions.add(explosion);
         self.world.add_explosion(id, pos);
+    }
+
+    pub async fn player_connect_events(&mut self) {
+        // Have any players joined?
+        if let Ok(x) = self.players_rx.try_recv() {
+            match x {
+                PlayerConnectEvent::Connected(p) => {
+                    info!("Player connected: {:?}", p);
+                    self.players.insert(p.id(), Player::new(p.id(), p));
+                }
+                PlayerConnectEvent::Disconnected(pid) => {
+                    info!("Player {:?} disconnected", pid);
+                    self.players.retain(|player_id, _| player_id != &pid);
+                }
+                _ => {
+                    info!("Unknown player event!");
+                }
+            }
+        }
+    }
+
+    pub async fn player_inputs(&mut self) {
+        let mut quit = Vec::new();
+        for p in self.players.values_mut() {
+            if !p.get_input().await {
+                quit.push(p.id());
+            }
+        }
+
+        for q in quit {
+            self.players.retain(|player_id, _| player_id != &q);
+        }
     }
 }

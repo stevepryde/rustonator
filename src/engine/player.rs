@@ -1,3 +1,4 @@
+use crate::comms::playercomm::{PlayerComm, PlayerMessage};
 use crate::{
     component::{
         action::Action,
@@ -10,6 +11,7 @@ use crate::{
     },
 };
 use bitflags::bitflags;
+use log::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +33,7 @@ impl From<u64> for PlayerId {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Player {
     id: PlayerId,
     active: bool,
@@ -52,12 +54,14 @@ pub struct Player {
     #[serde(skip)]
     effects_cache: Vec<Effect>,
     last_time: f64,
+    #[serde(skip)]
+    ws: PlayerComm,
 }
 
-impl Default for Player {
-    fn default() -> Self {
+impl Player {
+    pub fn new(id: PlayerId, comm: PlayerComm) -> Self {
         Player {
-            id: PlayerId::from(0),
+            id,
             active: true,
             position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
@@ -74,13 +78,8 @@ impl Default for Player {
             effects: Vec::new(),
             effects_cache: Vec::new(),
             last_time: 0.0,
+            ws: comm,
         }
-    }
-}
-
-impl Player {
-    pub fn new() -> Self {
-        Player::default()
     }
 
     pub fn id(&self) -> PlayerId {
@@ -197,6 +196,22 @@ impl Player {
     fn set_invincible(&mut self) {
         let effect = Effect::new(EffectType::Invincibility, 5.0);
         self.add_effect(effect);
+    }
+
+    pub async fn get_input(&mut self) -> bool {
+        self.action.clear();
+        match self.ws.recv_one().await {
+            Ok(Some(PlayerMessage::Action(a))) => {
+                info!("Player {:?} action received {:?}", self.id(), a);
+                self.set_action(a);
+                true
+            }
+            Ok(_) => true,
+            Err(e) => {
+                error!("Player {:?} error {:?}", self.id(), e);
+                false
+            }
+        }
     }
 }
 

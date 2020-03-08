@@ -142,20 +142,21 @@ async fn process_websocket_read(
 ) -> WsResult<()> {
     while let Some(msg) = ws_rx.next().await {
         let msg = msg?;
-        if !msg.is_text() {
+
+        if msg.is_text() {
+            // Put message on the input channel.
+            // NOTE: this will terminate the connection if any message fails
+            //       to deserialize. This is probably the desired behaviour
+            //       to eliminate faulty clients.
+            let player_msg: PlayerMessageExternal = serde_json::from_str(&msg.to_string())?;
+            player_tx.send(player_msg).await?
+        } else if msg.is_binary() {
             // TODO: support bincode?
             // I'd like to someday explore binary message formats with the
             // client. The client will hopefully someday also be Rust.
             error!("Unexpected binary message received. Connection dropped.");
             break;
         }
-
-        // Put message on the input channel.
-        // NOTE: this will terminate the connection if any message fails
-        //       to deserialize. This is probably the desired behaviour
-        //       to eliminate faulty clients.
-        let player_msg: PlayerMessageExternal = serde_json::from_str(&msg.to_string())?;
-        player_tx.send(player_msg).await?
     }
 
     Ok(())

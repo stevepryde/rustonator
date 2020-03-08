@@ -1,4 +1,5 @@
 use crate::comms::websocket::{WsError, WsResult};
+use crate::component::action::Action;
 use crate::engine::player::PlayerId;
 use crate::error::{ZError, ZResult};
 use futures::StreamExt;
@@ -17,6 +18,7 @@ pub struct MessageId(u64);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayerMessage {
     InitPlayer,
+    Action(Action),
     Disconnect,
 }
 
