@@ -4,14 +4,13 @@ use crate::comms::playercomm::{PlayerComm, PlayerMessageExternal, PlayerReceiver
 use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
 use crate::engine::player::PlayerId;
 use crate::error::ZResult;
-use async_std::net::{TcpListener, TcpStream};
-use async_std::task;
-use async_tungstenite::{accept_async, WebSocketStream};
-use futures::channel::mpsc::{channel, Receiver, Sender};
-use futures::stream::{SplitSink, SplitStream};
-use futures::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 
+use futures::stream::{SplitSink, SplitStream};
+use futures::{SinkExt, StreamExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::{channel, Sender};
+use tokio_tungstenite::{accept_async, WebSocketStream};
 use tungstenite::Message;
 
 pub type WsResult<T> = Result<T, WsError>;
@@ -31,29 +30,35 @@ impl From<tungstenite::error::Error> for WsError {
     }
 }
 
-impl From<futures::channel::mpsc::SendError> for WsError {
-    fn from(e: futures::channel::mpsc::SendError) -> Self {
-        WsError::SendError(e.to_string())
-    }
-}
-
-impl From<futures::channel::mpsc::TryRecvError> for WsError {
-    fn from(e: futures::channel::mpsc::TryRecvError) -> Self {
-        WsError::RecvError(e.to_string())
-    }
-}
-
 impl From<serde_json::error::Error> for WsError {
     fn from(e: serde_json::error::Error) -> Self {
         WsError::JsonError(e.to_string())
     }
 }
 
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for WsError {
+    fn from(e: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        WsError::SendError(e.to_string())
+    }
+}
+
+impl From<tokio::sync::mpsc::error::RecvError> for WsError {
+    fn from(e: tokio::sync::mpsc::error::RecvError) -> Self {
+        WsError::RecvError(e.to_string())
+    }
+}
+
+impl From<tokio::io::Error> for WsError {
+    fn from(e: tokio::io::Error) -> Self {
+        WsError::ConnectError(e.to_string())
+    }
+}
+
 /// Start async websocket server.
 /// NOTE: The caller can run this on a separate executor if needed.
-pub async fn spawn_websocket_server(server_sender: Sender<PlayerConnectEvent>) -> ZResult<()> {
+pub async fn spawn_websocket_server(server_sender: Sender<PlayerConnectEvent>) -> WsResult<()> {
     let addr = "0.0.0.0:9002";
-    let listener = TcpListener::bind(&addr).await?;
+    let mut listener = TcpListener::bind(&addr).await?;
     info!("Websocket server listening on: {}", addr);
     let mut next_player_id: u64 = 1;
 
@@ -70,7 +75,7 @@ pub async fn spawn_websocket_server(server_sender: Sender<PlayerConnectEvent>) -
         let player_id = PlayerId::from(next_player_id);
         next_player_id += 1;
 
-        task::spawn(accept_connection(
+        tokio::spawn(accept_connection(
             peer,
             stream,
             player_id,

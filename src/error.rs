@@ -1,5 +1,4 @@
 use crate::comms::websocket::WsError;
-use async_std::io;
 use std::fmt;
 
 pub type ZResult<T> = Result<T, ZError>;
@@ -15,12 +14,6 @@ pub enum ZError {
 impl fmt::Display for ZError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
-    }
-}
-
-impl From<io::Error> for ZError {
-    fn from(e: io::Error) -> Self {
-        ZError::IOError(e.to_string())
     }
 }
 

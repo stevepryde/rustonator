@@ -1,11 +1,11 @@
 use crate::comms::websocket::{WsError, WsResult};
 use crate::engine::player::PlayerId;
-use crate::error::ZResult;
-use futures::channel::mpsc::{Receiver, Sender};
+use crate::error::{ZError, ZResult};
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 pub type PlayerSender = Sender<PlayerMessageExternal>;
 pub type PlayerReceiver = Receiver<PlayerMessageExternal>;
@@ -50,12 +50,15 @@ impl PlayerComm {
         }
     }
 
-    pub async fn recv_one(&self) -> ZResult<Option<PlayerMessage>> {
-        let v: Option<PlayerMessageExternal> = self.receiver.await;
-        if let Some(msg) = v {
-            Ok(Some(msg.data))
-        } else {
-            Ok(None)
+    pub fn id(&self) -> PlayerId {
+        self.id
+    }
+
+    pub async fn recv_one(&mut self) -> ZResult<Option<PlayerMessage>> {
+        match self.receiver.try_recv() {
+            Ok(v) => Ok(Some(v.data)),
+            Err(TryRecvError::Empty) => Ok(None),
+            _ => Err(ZError::WebSocketError(WsError::Disconnected)),
         }
     }
 }
