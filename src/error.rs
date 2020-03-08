@@ -1,3 +1,4 @@
+use crate::comms::websocket::WsError;
 use async_std::io;
 use std::fmt;
 
@@ -7,7 +8,7 @@ pub type ZResult<T> = Result<T, ZError>;
 pub enum ZError {
     FatalError(String),
     IOError(String),
-    WebSocketError(String),
+    WebSocketError(WsError),
     JsonError(String),
 }
 
@@ -23,20 +24,14 @@ impl From<io::Error> for ZError {
     }
 }
 
-impl From<tungstenite::error::Error> for ZError {
-    fn from(e: tungstenite::error::Error) -> Self {
-        ZError::WebSocketError(e.to_string())
-    }
-}
-
-impl From<futures::channel::mpsc::SendError> for ZError {
-    fn from(e: futures::channel::mpsc::SendError) -> Self {
-        ZError::WebSocketError(e.to_string())
-    }
-}
-
 impl From<serde_json::error::Error> for ZError {
     fn from(e: serde_json::error::Error) -> Self {
         ZError::JsonError(e.to_string())
+    }
+}
+
+impl From<WsError> for ZError {
+    fn from(e: WsError) -> Self {
+        ZError::WebSocketError(e)
     }
 }

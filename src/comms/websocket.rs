@@ -1,6 +1,6 @@
 use log::{error, info};
 
-use crate::comms::playercomm::PlayerComm;
+use crate::comms::playercomm::{PlayerComm, PlayerMessageExternal, PlayerReceiver, PlayerSender};
 use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
 use crate::engine::player::PlayerId;
 use crate::error::ZResult;
@@ -13,6 +13,41 @@ use futures::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 
 use tungstenite::Message;
+
+pub type WsResult<T> = Result<T, WsError>;
+
+#[derive(Debug, Clone)]
+pub enum WsError {
+    ConnectError(String),
+    RecvError(String),
+    SendError(String),
+    JsonError(String),
+    Disconnected,
+}
+
+impl From<tungstenite::error::Error> for WsError {
+    fn from(e: tungstenite::error::Error) -> Self {
+        WsError::ConnectError(e.to_string())
+    }
+}
+
+impl From<futures::channel::mpsc::SendError> for WsError {
+    fn from(e: futures::channel::mpsc::SendError) -> Self {
+        WsError::SendError(e.to_string())
+    }
+}
+
+impl From<futures::channel::mpsc::TryRecvError> for WsError {
+    fn from(e: futures::channel::mpsc::TryRecvError) -> Self {
+        WsError::RecvError(e.to_string())
+    }
+}
+
+impl From<serde_json::error::Error> for WsError {
+    fn from(e: serde_json::error::Error) -> Self {
+        WsError::JsonError(e.to_string())
+    }
+}
 
 /// Start async websocket server.
 /// NOTE: The caller can run this on a separate executor if needed.
@@ -51,7 +86,7 @@ async fn accept_connection(
     stream: TcpStream,
     player_id: PlayerId,
     mut server_sender: Sender<PlayerConnectEvent>,
-) -> ZResult<()> {
+) -> WsResult<()> {
     if let Err(e) = handle_connection(peer, stream, player_id, server_sender.clone()).await {
         error!("Error processing connection: {:?}", e);
     }
@@ -68,7 +103,7 @@ async fn handle_connection(
     stream: TcpStream,
     player_id: PlayerId,
     server_sender: Sender<PlayerConnectEvent>,
-) -> ZResult<()> {
+) -> WsResult<()> {
     let ws_stream = accept_async(stream).await?;
 
     info!("New websocket connection: {}", peer);
@@ -76,49 +111,56 @@ async fn handle_connection(
     let (ws_tx, ws_rx) = ws_stream.split();
 
     // All ok, tell the server a new player has joined.
-    let (comms_out_engine_tx, comms_out_ws_rx) = channel(30);
-    let (comms_in_ws_tx, comms_in_engine_rx) = channel(30);
-    let player_comm = PlayerComm::new(player_id, comms_out_engine_tx, comms_in_engine_rx);
+    let (pcomm_tx, wscomm_rx) = channel(30); // PlayerComm -> ws (here)
+    let (wscomm_tx, pcomm_rx) = channel(30); // ws (here) -> PlayerComm
+    let player_comm = PlayerComm::new(player_id, pcomm_tx, pcomm_rx);
     let mut server_sender_clone = server_sender.clone();
     server_sender_clone
         .send(PlayerConnectEvent::Connected(player_comm))
         .await?;
 
-    let writer = process_websocket_write(comms_out_ws_rx, ws_tx);
-    let reader = process_websocket_read(ws_rx, comms_in_ws_tx);
+    // PlayerComm -> ws -> external
+    let writer = process_websocket_write(wscomm_rx, ws_tx);
+
+    // External -> ws -> PlayerComm
+    let reader = process_websocket_read(ws_rx, wscomm_tx);
     futures::try_join!(writer, reader)?;
     Ok(())
 }
 
+/// Process websocket read events. We need to run this in a polling loop
+/// in order to automatically process heartbeats. Messages are pushed into
+/// a channel connected to the PlayerComm object.
 async fn process_websocket_read(
     mut ws_rx: SplitStream<WebSocketStream<TcpStream>>,
-    mut player_sender: Sender<PlayerMessage>,
-) -> ZResult<()> {
+    mut player_tx: PlayerSender,
+) -> WsResult<()> {
     while let Some(msg) = ws_rx.next().await {
         let msg = msg?;
-        if msg.is_binary() {
-            // TODO: support MessagePack?
+        if !msg.is_text() {
+            // TODO: support bincode?
+            // I'd like to someday explore binary message formats with the
+            // client. The client will hopefully someday also be Rust.
             error!("Unexpected binary message received. Connection dropped.");
             break;
         }
-        if msg.is_text() {
-            // Put message on the input channel.
-            // NOTE: this will terminate the connection if any message fails
-            //       to deserialize. This is probably the desired behaviour
-            //       to eliminate faulty clients.
-            let player_msg: PlayerMessage = serde_json::from_str(&msg.to_string())?;
-            player_sender.send(player_msg).await?
-        }
+
+        // Put message on the input channel.
+        // NOTE: this will terminate the connection if any message fails
+        //       to deserialize. This is probably the desired behaviour
+        //       to eliminate faulty clients.
+        let player_msg: PlayerMessageExternal = serde_json::from_str(&msg.to_string())?;
+        player_tx.send(player_msg).await?
     }
 
     Ok(())
 }
 
 async fn process_websocket_write(
-    mut engine_rx: Receiver<PlayerMessage>,
+    mut player_rx: PlayerReceiver,
     mut ws_tx: SplitSink<WebSocketStream<TcpStream>, Message>,
-) -> ZResult<()> {
-    while let Some(msg) = engine_rx.next().await {
+) -> WsResult<()> {
+    while let Some(msg) = player_rx.next().await {
         ws_tx
             .send(Message::from(serde_json::to_value(&msg)?.to_string()))
             .await?;

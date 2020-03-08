@@ -37,10 +37,9 @@ use crate::comms::websocket::spawn_websocket_server;
 use async_std::task;
 use futures::channel::mpsc::channel;
 
-use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
+use crate::comms::playercomm::PlayerConnectEvent;
 use crate::error::ZResult;
 use fern;
-use futures::SinkExt;
 use log::info;
 
 fn main() {
@@ -67,7 +66,7 @@ fn main() {
             last_frame = Instant::now();
             // Have any players joined?
             // TODO: create playermanager to manage player events.
-            if let Ok(x) = player_join_rx.try_next() {
+            if let Ok(x) = player_join_rx.await {
                 match x {
                     Some(PlayerConnectEvent::Connected(p)) => {
                         info!("Player connected: {:?}", p);
@@ -75,6 +74,7 @@ fn main() {
                     }
                     Some(PlayerConnectEvent::Disconnected(pid)) => {
                         info!("Player {:?} disconnected", pid);
+                        players.retain(|p| p.id != pid);
                     }
                     None => {
                         info!("Unknown player event!");
@@ -82,17 +82,21 @@ fn main() {
                 }
             }
             // TODO: feed player comms into server using playermanager.
-            // for p in players.iter_mut() {
-            //     if let Ok(x) = p.receiver.try_next() {
-            //         info!("Player {:?} received {:?}", p.id, x);
-            //         p.sender
-            //             .send(PlayerMessage::new(
-            //                 "HELLO",
-            //                 serde_json::json!({"my": "data"}),
-            //             ))
-            //             .await;
-            //     }
-            // }
+            let mut quit = Vec::new();
+            for p in players.iter_mut() {
+                if let Ok(x) = p.receiver.try_next() {
+                    if x.is_none() {
+                        quit.push(p.id);
+                    }
+
+                    info!("Player {:?} received {:?}", p.id, x);
+                }
+            }
+
+            for q in quit {
+                players.retain(|v| v.id != q);
+            }
+
             if !game_server.update(delta_time) {
                 break;
             }
