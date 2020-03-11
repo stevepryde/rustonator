@@ -1,8 +1,8 @@
 use crate::engine::player::PlayerId;
+use crate::utils::misc::Timestamp;
 use crate::{
     engine::{bomb::Bomb, position::MapPosition},
     tools::itemstore::HasId,
-    utils::misc::unix_timestamp,
 };
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +26,7 @@ pub struct Explosion {
     position: MapPosition,
     remaining: f64,
     harmful: bool,
-    timestamp: i64,
+    timestamp: Timestamp,
 }
 
 impl Explosion {
@@ -39,7 +39,7 @@ impl Explosion {
             position,
             remaining: 0.5,
             harmful: true,
-            timestamp: unix_timestamp(),
+            timestamp: Timestamp::new(),
         }
     }
 

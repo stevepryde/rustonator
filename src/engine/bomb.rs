@@ -3,7 +3,6 @@ use crate::utils::misc::Timestamp;
 use crate::{
     engine::{explosion::Explosion, player::Player, position::MapPosition},
     tools::itemstore::HasId,
-    utils::misc::unix_timestamp,
 };
 use serde::{Deserialize, Serialize};
 

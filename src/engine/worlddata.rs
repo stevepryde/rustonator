@@ -3,11 +3,11 @@ use crate::engine::explosion::ExplosionId;
 use crate::engine::position::MapPosition;
 use crate::error::{ZError, ZResult};
 use crate::utils::misc::Timestamp;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::convert::TryFrom;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SerWorldData(Value);
 

@@ -41,7 +41,7 @@ impl From<u64> for PlayerId {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SerPlayer(Value);
 
