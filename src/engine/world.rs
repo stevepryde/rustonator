@@ -1,5 +1,6 @@
 use crate::engine::bomb::BombId;
 use crate::engine::explosion::ExplosionId;
+use crate::utils::misc::Timestamp;
 use crate::{
     engine::{
         config::GameConfig,
@@ -39,6 +40,18 @@ impl WorldSize {
             tile_size: SizeInPixels::new(tile_width, tile_height),
             chunk_size: SizeInTiles::new(chunk_width, chunk_height),
         }
+    }
+
+    pub fn map_size(&self) -> &SizeInTiles {
+        &self.map_size
+    }
+
+    pub fn tile_size(&self) -> &SizeInPixels {
+        &self.tile_size
+    }
+
+    pub fn chunk_size(&self) -> &SizeInTiles {
+        &self.chunk_size
     }
 }
 
@@ -82,6 +95,14 @@ impl World {
         }
 
         world
+    }
+
+    pub fn sizes(&self) -> &WorldSize {
+        &self.sizes
+    }
+
+    pub fn data(&self) -> &WorldData {
+        &self.data
     }
 
     pub fn add_bomb(&mut self, bomb_id: BombId, pos: MapPosition) {
@@ -208,19 +229,19 @@ impl World {
             .set_at_index(index, InternalCellData::Empty);
     }
 
-    pub fn set_mob_data(&mut self, pos: MapPosition, timestamp: i64) {
+    pub fn set_mob_data(&mut self, pos: MapPosition, timestamp: Timestamp) {
         let index = self.get_index(pos);
         self.data_mob.set_at_index(index, timestamp);
     }
 
-    pub fn get_mob_data(&self, pos: MapPosition) -> i64 {
+    pub fn get_mob_data(&self, pos: MapPosition) -> Timestamp {
         let index = self.get_index(pos);
         self.data_mob.get_at_index(index)
     }
 
     pub fn clear_mob_data(&mut self, pos: MapPosition) {
         let index = self.get_index(pos);
-        self.data_mob.set_at_index(index, 0);
+        self.data_mob.set_at_index(index, Timestamp::zero());
     }
 
     pub fn get_spawn_point(&self) -> MapPosition {
@@ -270,10 +291,9 @@ impl World {
     }
 
     pub fn is_nearby_entity(&self, pos: MapPosition, entities: &[PixelPositionF64]) -> bool {
-        entities.iter().any(|p| {
-            p.to_map_position(self.sizes.tile_size)
-                .is_within_range(pos, 4)
-        })
+        entities
+            .iter()
+            .any(|p| p.to_map_position(self).is_within_range(pos, 4))
     }
 
     pub fn is_nearby_map_entity(&self, pos: MapPosition, entities: &[MapPosition]) -> bool {

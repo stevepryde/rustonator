@@ -1,4 +1,5 @@
 use crate::engine::player::PlayerId;
+use crate::utils::misc::Timestamp;
 use crate::{
     engine::{explosion::Explosion, player::Player, position::MapPosition},
     tools::itemstore::HasId,
@@ -26,7 +27,7 @@ pub struct Bomb {
     position: MapPosition,
     remaining: f64, // TODO: wrap this in a newtype TimeRemaining(f64)
     range: u32,     // TODO: wrap this in a newtype BombRange(u32)
-    timestamp: i64, // TODO: wrap this in a newtype Timestamp(i64)
+    timestamp: Timestamp,
 }
 
 impl Bomb {
@@ -39,7 +40,7 @@ impl Bomb {
             position,
             remaining: player.bomb_time(),
             range: player.range(),
-            timestamp: unix_timestamp(),
+            timestamp: Timestamp::new(),
         }
     }
 
@@ -61,6 +62,10 @@ impl Bomb {
 
     pub fn position(&self) -> MapPosition {
         self.position
+    }
+
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     pub fn tick(&mut self, delta_time: f64) -> Option<Explosion> {

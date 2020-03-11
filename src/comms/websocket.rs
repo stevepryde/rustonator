@@ -1,9 +1,8 @@
 use log::{error, info};
 
+use crate::comms::playercomm::PlayerConnectEvent;
 use crate::comms::playercomm::{PlayerComm, PlayerMessageExternal, PlayerReceiver, PlayerSender};
-use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
 use crate::engine::player::PlayerId;
-use crate::error::ZResult;
 use std::net::SocketAddr;
 
 use futures::stream::{SplitSink, SplitStream};

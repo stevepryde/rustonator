@@ -1,3 +1,4 @@
+use crate::engine::world::World;
 use serde::Serialize;
 
 // Get the difference between two u32 values.
@@ -41,21 +42,23 @@ where
         PixelPosition { x, y }
     }
 
-    pub fn from_map_position(pos: MapPosition, tile_size: SizeInPixels) -> Self {
+    pub fn from_map_position(pos: MapPosition, world: &World) -> Self {
+        let tile_size = world.sizes().tile_size();
         let x = T::from(pos.x as f64 * tile_size.width as f64 + (tile_size.width as f64 / 2.0));
         let y = T::from(pos.y as f64 * tile_size.height as f64 + (tile_size.height as f64 / 2.0));
         Self::new(x, y)
     }
 
-    pub fn to_map_position(&self, tile_size: SizeInPixels) -> MapPosition {
+    pub fn to_map_position(&self, world: &World) -> MapPosition {
+        let tile_size = world.sizes().tile_size();
         MapPosition::new(
             (self.x.into() / tile_size.width as f64) as u32,
             (self.y.into() / tile_size.height as f64) as u32,
         )
     }
 
-    pub fn centre_in_tile(&mut self, tile_size: SizeInPixels) {
-        let pos = PixelPosition::from_map_position(self.to_map_position(tile_size), tile_size);
+    pub fn centre_in_tile(&mut self, world: &World) {
+        let pos = PixelPosition::from_map_position(self.to_map_position(world), world);
         self.x = pos.x;
         self.y = pos.y;
     }
@@ -77,21 +80,18 @@ impl ChunkPosition {
         ChunkPosition { x, y }
     }
 
-    pub fn from_map_position(pos: MapPosition, chunk_size: SizeInTiles) -> Self {
+    pub fn from_map_position(pos: MapPosition, world: &World) -> Self {
+        let chunk_size = world.sizes().chunk_size();
         let x = (pos.x as f64 / chunk_size.width as f64) as u32;
         let y = (pos.y as f64 / chunk_size.height as f64) as u32;
         ChunkPosition { x, y }
     }
 
-    pub fn from_pixel_position<T>(
-        pos: PixelPosition<T>,
-        tile_size: SizeInPixels,
-        chunk_size: SizeInTiles,
-    ) -> Self
+    pub fn from_pixel_position<T>(pos: PixelPosition<T>, world: &World) -> Self
     where
         T: From<f64> + Into<f64> + Serialize + Copy,
     {
-        ChunkPosition::from_map_position(pos.to_map_position(tile_size), chunk_size)
+        ChunkPosition::from_map_position(pos.to_map_position(world), world)
     }
 }
 

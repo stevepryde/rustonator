@@ -18,3 +18,4 @@ tungstenite = "0.10"
 tokio-tungstenite = "0.10"
 fern = "0.5"
 tokio = { version = "0.2", features = ["full"]}
+regex = "1"

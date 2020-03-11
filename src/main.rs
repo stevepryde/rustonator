@@ -31,14 +31,14 @@ pub mod comms {
 }
 pub mod error;
 pub mod game {
-    pub mod gameloop;
+    pub mod maingame;
     pub mod server;
 }
 
 use crate::comms::websocket::spawn_websocket_server;
 use tokio::sync::mpsc::channel;
 
-use crate::game::gameloop::game_loop;
+use crate::game::maingame::game_loop;
 use fern;
 
 #[tokio::main]
