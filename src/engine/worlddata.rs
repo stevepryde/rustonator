@@ -20,35 +20,49 @@ impl TryFrom<&WorldData> for SerWorldData {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct WorldData(Vec<u8>);
+#[serde(transparent)]
+pub struct WorldData {
+    data: Vec<u8>,
+    #[serde(skip)]
+    width: i32,
+    #[serde(skip)]
+    height: i32,
+}
 
 impl WorldData {
-    pub fn new(width: u32, height: u32) -> Self {
-        WorldData(vec![0; (width * height) as usize])
-    }
-
-    pub fn get_at_index(&self, index: usize) -> Option<u8> {
-        if index >= self.0.len() {
-            None
-        } else {
-            Some(self.0[index])
+    pub fn new(width: i32, height: i32) -> Self {
+        WorldData {
+            data: vec![0; (width * height) as usize],
+            width,
+            height,
         }
     }
 
-    pub fn set_at_index(&mut self, index: usize, value: u8) {
-        // TODO: fail on bad index?
-        if index < self.0.len() {
-            self.0[index] = value;
+    pub fn get_index(&self, pos: MapPosition) -> Option<usize> {
+        if pos.x < 0 || pos.x >= self.width || pos.y < 0 || pos.y >= self.height {
+            None
+        } else {
+            Some(((pos.y * self.width) + pos.x) as usize)
+        }
+    }
+
+    pub fn get_at(&self, pos: MapPosition) -> Option<u8> {
+        self.get_index(pos).map(|index| self.data[index])
+    }
+
+    pub fn set_at(&mut self, pos: MapPosition, value: u8) {
+        if let Some(index) = self.get_index(pos) {
+            self.data[index] = value;
         }
     }
 
     pub fn get_slice(&self, index: usize, length: usize) -> &[u8] {
-        &self.0[index..(index + length)]
+        &self.data[index..(index + length)]
     }
 
     pub fn set_slice(&mut self, index: usize, slice: &[u8]) {
         let end = index + slice.len();
-        self.0.as_mut_slice()[index..end].copy_from_slice(slice);
+        self.data.as_mut_slice()[index..end].copy_from_slice(slice);
     }
 
     pub fn ser(&self) -> ZResult<SerWorldData> {
@@ -58,15 +72,15 @@ impl WorldData {
 
 #[derive(Debug, Clone)]
 pub struct WorldChunk {
-    tx: u32,
-    ty: u32,
-    width: u32,
-    height: u32,
+    tx: i32,
+    ty: i32,
+    width: i32,
+    height: i32,
     data: WorldData,
 }
 
 impl WorldChunk {
-    pub fn new(tx: u32, ty: u32, width: u32, height: u32) -> Self {
+    pub fn new(tx: i32, ty: i32, width: i32, height: i32) -> Self {
         WorldChunk {
             tx,
             ty,
@@ -89,40 +103,72 @@ pub enum InternalCellData {
 }
 
 #[derive(Debug, Clone)]
-pub struct InternalWorldData(Vec<InternalCellData>);
+pub struct InternalWorldData {
+    data: Vec<InternalCellData>,
+    width: i32,
+    height: i32,
+}
 
 impl InternalWorldData {
-    pub fn new(width: u32, height: u32) -> Self {
-        InternalWorldData(vec![InternalCellData::Empty; (width * height) as usize])
+    pub fn new(width: i32, height: i32) -> Self {
+        InternalWorldData {
+            data: vec![InternalCellData::Empty; (width * height) as usize],
+            width,
+            height,
+        }
     }
 
-    pub fn get_at_index(&self, index: usize) -> &InternalCellData {
-        // TODO: do we need a range check here?
-        &self.0[index]
+    fn get_index(&self, pos: MapPosition) -> Option<usize> {
+        if pos.x < 0 || pos.x >= self.width || pos.y < 0 || pos.y >= self.height {
+            None
+        } else {
+            Some(((pos.y * self.width) + pos.x) as usize)
+        }
     }
 
-    pub fn set_at_index(&mut self, index: usize, value: InternalCellData) {
-        // TODO: do we need a range check here?
-        self.0[index] = value;
+    pub fn get_at(&self, pos: MapPosition) -> Option<&InternalCellData> {
+        self.get_index(pos).map(|index| &self.data[index])
+    }
+
+    pub fn set_at(&mut self, pos: MapPosition, value: InternalCellData) {
+        if let Some(index) = self.get_index(pos) {
+            self.data[index] = value;
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct InternalMobData(Vec<Timestamp>);
+pub struct InternalMobData {
+    data: Vec<Timestamp>,
+    width: i32,
+    height: i32,
+}
 
 impl InternalMobData {
-    pub fn new(width: u32, height: u32) -> Self {
-        InternalMobData(vec![Timestamp::zero(); (width * height) as usize])
+    pub fn new(width: i32, height: i32) -> Self {
+        InternalMobData {
+            data: vec![Timestamp::zero(); (width * height) as usize],
+            width,
+            height,
+        }
     }
 
-    pub fn get_at_index(&self, index: usize) -> Timestamp {
-        // TODO: do we need a range check here?
-        self.0[index]
+    fn get_index(&self, pos: MapPosition) -> Option<usize> {
+        if pos.x < 0 || pos.x >= self.width || pos.y < 0 || pos.y >= self.height {
+            None
+        } else {
+            Some(((pos.y * self.width) + pos.x) as usize)
+        }
     }
 
-    pub fn set_at_index(&mut self, index: usize, value: Timestamp) {
-        // TODO: do we need a range check here?
-        self.0[index] = value;
+    pub fn get_at(&self, pos: MapPosition) -> Option<&Timestamp> {
+        self.get_index(pos).map(|index| &self.data[index])
+    }
+
+    pub fn set_at(&mut self, pos: MapPosition, value: Timestamp) {
+        if let Some(index) = self.get_index(pos) {
+            self.data[index] = value;
+        }
     }
 }
 

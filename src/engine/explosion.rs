@@ -73,3 +73,33 @@ impl HasId<ExplosionId> for Explosion {
         self.id = id;
     }
 }
+
+impl From<MapPosition> for Explosion {
+    fn from(position: MapPosition) -> Self {
+        Explosion {
+            id: ExplosionId::from(0),
+            pid: PlayerId::from(0),
+            pname: String::new(),
+            active: true,
+            position,
+            remaining: 0.5,
+            harmful: true,
+            timestamp: Timestamp::new(),
+        }
+    }
+}
+
+impl From<Bomb> for Explosion {
+    fn from(bomb: Bomb) -> Self {
+        Explosion {
+            id: ExplosionId::from(0),
+            pid: bomb.pid(),
+            pname: bomb.pname().to_string(),
+            active: true,
+            position: bomb.position(),
+            remaining: 0.5,
+            harmful: true,
+            timestamp: Timestamp::new(),
+        }
+    }
+}

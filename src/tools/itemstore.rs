@@ -50,6 +50,10 @@ impl<I: Clone + From<u64> + Debug + Hash + Eq, T: HasId<I>> ItemStore<I, T> {
         self.items.get(&id)
     }
 
+    pub fn get_mut(&mut self, id: I) -> Option<&mut T> {
+        self.items.get_mut(&id)
+    }
+
     pub fn replace(&mut self, id: I, item: T) {
         let mut item = item;
         item.set_id(id.clone());

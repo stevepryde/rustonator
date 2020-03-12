@@ -1,5 +1,7 @@
-use crate::engine::bomb::BombId;
-use crate::engine::explosion::ExplosionId;
+use crate::engine::bomb::{Bomb, BombId};
+use crate::engine::explosion::{Explosion, ExplosionId};
+use crate::engine::position::PositionOffset;
+use crate::game::server::{BombList, ExplosionList};
 use crate::utils::misc::Timestamp;
 use crate::{
     engine::{
@@ -24,7 +26,7 @@ pub struct WorldSize {
 }
 
 impl WorldSize {
-    pub fn new(width: u32, height: u32, config: &GameConfig) -> Self {
+    pub fn new(width: i32, height: i32, config: &GameConfig) -> Self {
         let tile_width = 32;
         let tile_height = 32;
 
@@ -32,8 +34,8 @@ impl WorldSize {
         let map_width = if width % 2 == 0 { width + 1 } else { width };
         let map_height = if height % 2 == 0 { height + 1 } else { height };
 
-        let chunk_width = (config.screen_width() as f64 / tile_width as f64) as u32 + 10;
-        let chunk_height = (config.screen_height() as f64 / tile_height as f64) as u32 + 10;
+        let chunk_width = (config.screen_width() as f64 / tile_width as f64) as i32 + 10;
+        let chunk_height = (config.screen_height() as f64 / tile_height as f64) as i32 + 10;
 
         WorldSize {
             map_size: SizeInTiles::new(map_width, map_height),
@@ -64,7 +66,7 @@ pub struct World {
 }
 
 impl World {
-    pub fn new(width: u32, height: u32, config: &GameConfig) -> Self {
+    pub fn new(width: i32, height: i32, config: &GameConfig) -> Self {
         let mut world = World {
             sizes: WorldSize::new(width, height, config),
             data: WorldData::new(width, height),
@@ -89,7 +91,7 @@ impl World {
                 CellType::Wall,
             );
 
-            for x in 1..((world.sizes.map_size.width as f64 / 2.0) as u32 - 2) {
+            for x in 1..((world.sizes.map_size.width as f64 / 2.0) as i32 - 2) {
                 world.set_cell(MapPosition::new(x * 2, y), CellType::Wall);
             }
         }
@@ -105,26 +107,12 @@ impl World {
         &self.data
     }
 
-    pub fn add_bomb(&mut self, bomb_id: BombId, pos: MapPosition) {
-        self.data_internal
-            .set_at_index(self.get_index(pos), InternalCellData::Bomb(bomb_id));
-    }
-
-    pub fn add_explosion(&mut self, explosion_id: ExplosionId, pos: MapPosition) {
-        self.data_internal.set_at_index(
-            self.get_index(pos),
-            InternalCellData::Explosion(explosion_id),
-        );
-    }
-
     fn get_index(&self, pos: MapPosition) -> usize {
         ((pos.y * self.sizes.map_size.width) + pos.x) as usize
     }
 
     pub fn get_cell(&self, pos: MapPosition) -> Option<CellType> {
-        self.data
-            .get_at_index(self.get_index(pos))
-            .map(CellType::from)
+        self.data.get_at(pos).map(CellType::from)
     }
 
     pub fn set_cell(&mut self, pos: MapPosition, value: CellType) {
@@ -134,7 +122,7 @@ impl World {
         if let CellType::Mystery = value {
             self.zones.add_block_at_map_xy(pos);
         }
-        self.data.set_at_index(self.get_index(pos), value as u8);
+        self.data.set_at(pos, value as u8);
     }
 
     pub fn find_nearest_blank(&self, pos: MapPosition) -> MapPosition {
@@ -143,78 +131,42 @@ impl World {
         }
 
         for radius in 1..20 {
-            let test_length = radius as usize * 2 + 1;
-
             // Top.
-            let startx = if radius > pos.x {
-                (pos.x - radius) as usize
-            } else {
-                1
-            };
-            let endx = if startx + test_length >= self.sizes.map_size.width as usize {
-                (self.sizes.map_size.width as usize - 1) - startx
-            } else {
-                startx + test_length
-            };
-
             if radius < pos.y {
-                let cy = pos.y - radius;
-                let start_index = self.get_index(MapPosition::new(startx as u32, cy));
-                for offset in 0..(endx - startx) {
-                    if let Some(CellType::Empty) = self
-                        .data
-                        .get_at_index(start_index + offset)
-                        .map(CellType::from)
-                    {
-                        return MapPosition::new((startx + offset) as u32, cy);
+                for offset_x in 0..radius * 2 {
+                    let p = pos + PositionOffset::new(offset_x - radius, -radius);
+                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                        return p;
                     }
                 }
             }
 
             // Bottom.
-            let cy = pos.y + radius;
-            if cy < self.sizes.map_size.height - 1 {
-                let start_index = self.get_index(MapPosition::new(startx as u32, cy));
-                for offset in 0..(endx - startx) {
-                    if let Some(CellType::Empty) = self
-                        .data
-                        .get_at_index(start_index + offset)
-                        .map(CellType::from)
-                    {
-                        return MapPosition::new((startx + offset) as u32, cy);
+            if pos.y + radius < self.sizes.map_size.height - 1 {
+                for offset_x in 0..radius * 2 {
+                    let p = pos + PositionOffset::new(offset_x - radius, radius);
+                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                        return p;
                     }
                 }
             }
 
             // Left.
-            let test_length = test_length - 2; // No need to test either end point twice.
-            let starty = if radius > pos.y {
-                (pos.y - radius) as usize + 1
-            } else {
-                1
-            };
-            let endy = if starty + test_length >= self.sizes.map_size.height as usize {
-                (self.sizes.map_size.height as usize - 1) - starty
-            } else {
-                starty + test_length
-            };
-
             if radius < pos.x {
-                let cx = pos.x - radius;
-
-                for y in starty..endy {
-                    if let Some(CellType::Empty) = self.get_cell(MapPosition::new(cx, y as u32)) {
-                        return MapPosition::new(cx, y as u32);
+                for offset_y in 0..radius * 2 {
+                    let p = pos + PositionOffset::new(-radius, offset_y - radius);
+                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                        return p;
                     }
                 }
             }
 
             // Right.
-            let cx = pos.x + radius;
-            if cx < self.sizes.map_size.width - 1 {
-                for y in starty..endy {
-                    if let Some(CellType::Empty) = self.get_cell(MapPosition::new(cx, y as u32)) {
-                        return MapPosition::new(cx, y as u32);
+            if pos.x + radius < self.sizes.map_size.width - 1 {
+                for offset_y in 0..radius * 2 {
+                    let p = pos + PositionOffset::new(-radius, offset_y + radius);
+                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                        return p;
                     }
                 }
             }
@@ -224,24 +176,19 @@ impl World {
     }
 
     pub fn clear_internal_cell(&mut self, pos: MapPosition) {
-        let index = self.get_index(pos);
-        self.data_internal
-            .set_at_index(index, InternalCellData::Empty);
+        self.data_internal.set_at(pos, InternalCellData::Empty);
     }
 
     pub fn set_mob_data(&mut self, pos: MapPosition, timestamp: Timestamp) {
-        let index = self.get_index(pos);
-        self.data_mob.set_at_index(index, timestamp);
+        self.data_mob.set_at(pos, timestamp);
     }
 
-    pub fn get_mob_data(&self, pos: MapPosition) -> Timestamp {
-        let index = self.get_index(pos);
-        self.data_mob.get_at_index(index)
+    pub fn get_mob_data(&self, pos: MapPosition) -> Option<&Timestamp> {
+        self.data_mob.get_at(pos)
     }
 
     pub fn clear_mob_data(&mut self, pos: MapPosition) {
-        let index = self.get_index(pos);
-        self.data_mob.set_at_index(index, Timestamp::zero());
+        self.data_mob.set_at(pos, Timestamp::zero());
     }
 
     pub fn get_spawn_point(&self) -> MapPosition {
@@ -272,7 +219,7 @@ impl World {
         MapPosition::new(1, 1)
     }
 
-    pub fn get_chunk_data(&self, map_x: u32, map_y: u32) -> WorldChunk {
+    pub fn get_chunk_data(&self, map_x: i32, map_y: i32) -> WorldChunk {
         let w = std::cmp::min(
             self.sizes.chunk_size.width,
             self.sizes.map_size.width - map_x,
@@ -343,8 +290,8 @@ impl World {
 
         for py in 0..numx {
             for px in 0..numy {
-                let mx = ((stepx * px as f64) + half_stepx) as u32;
-                let my = ((stepy * py as f64) + half_stepy) as u32;
+                let mx = ((stepx * px as f64) + half_stepx) as i32;
+                let my = ((stepy * py as f64) + half_stepy) as i32;
 
                 let mut blank = self.find_nearest_blank(MapPosition::new(mx, my));
                 if blank.x == 1 && blank.y == 1 {
@@ -366,5 +313,112 @@ impl World {
         }
 
         mob_spawners
+    }
+
+    pub fn add_bomb(&mut self, bomb: Bomb, bombs: &mut BombList) {
+        self.update_bomb_path(&bomb);
+        let pos = bomb.position();
+        let id = bombs.add(bomb);
+        self.data_internal.set_at(pos, InternalCellData::Bomb(id));
+    }
+
+    pub fn add_explosion(&mut self, explosion: Explosion, explosions: &mut ExplosionList) {
+        let pos = explosion.position();
+        let id = explosions.add(explosion);
+        self.data_internal
+            .set_at(pos, InternalCellData::Explosion(id));
+    }
+
+    pub fn update_bomb_path(&mut self, bomb: &Bomb) {
+        self.set_mob_data(bomb.position(), bomb.timestamp());
+
+        for offset in vec![
+            PositionOffset::up(1),
+            PositionOffset::down(1),
+            PositionOffset::left(1),
+            PositionOffset::right(1),
+        ]
+        .into_iter()
+        {
+            for dist in 1..=*bomb.range() {
+                let pos = bomb.position() + (offset * dist as i32);
+                match self.get_cell(pos) {
+                    // Explosions can pass through the following.
+                    Some(CellType::Empty)
+                    | Some(CellType::ItemBomb)
+                    | Some(CellType::ItemRange)
+                    | Some(CellType::ItemRandom)
+                    | Some(CellType::MobSpawner) => self.set_mob_data(pos, bomb.timestamp()),
+                    // The following will block an explosion, so stop.
+                    Some(CellType::Wall)
+                    | Some(CellType::Mystery)
+                    | Some(CellType::Bomb)
+                    | None => break,
+                }
+            }
+        }
+    }
+
+    pub fn explode_bomb(
+        &mut self,
+        bomb: &mut Bomb,
+        bombs: &mut BombList,
+        explosions: &mut ExplosionList,
+    ) {
+        if let Some(CellType::Bomb) = self.get_cell(bomb.position()) {
+            self.set_cell(bomb.position(), CellType::Empty);
+            self.clear_internal_cell(bomb.position());
+        }
+
+        self.explode_bomb_path(bomb, bombs, explosions);
+        bomb.terminate();
+    }
+
+    pub fn explode_bomb_path(
+        &mut self,
+        bomb: &Bomb,
+        bombs: &mut BombList,
+        explosions: &mut ExplosionList,
+    ) {
+        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+
+        for offset in vec![
+            PositionOffset::up(1),
+            PositionOffset::down(1),
+            PositionOffset::left(1),
+            PositionOffset::right(1),
+        ]
+        .into_iter()
+        {
+            for dist in 1..=*bomb.range() {
+                let pos = bomb.position() + (offset * dist as i32);
+                match self.get_cell(pos) {
+                    // Explosions will in turn explode other bombs.
+                    Some(CellType::Bomb) => {
+                        if let Some(InternalCellData::Bomb(bomb_id)) =
+                            self.data_internal.get_at(pos)
+                        {
+                            if let Some(b) = bombs.get_mut(*bomb_id) {
+                                // TODO: Of course this doesn't work.
+                                // Try getting all of the positions first.
+                                // Return explosion positions and then the list of bomb positions.
+                                // Explode the explosions, then explode the bombs.
+                                self.explode_bomb(b, bombs, explosions);
+                            }
+                        }
+                    }
+                    // Explosions can pass through the following.
+                    Some(CellType::Empty)
+                    | Some(CellType::ItemBomb)
+                    | Some(CellType::ItemRange)
+                    | Some(CellType::ItemRandom)
+                    | Some(CellType::MobSpawner) => {
+                        self.add_explosion(Explosion::from(bomb.clone()), explosions)
+                    }
+                    // The following will block an explosion, so stop.
+                    Some(CellType::Wall) | Some(CellType::Mystery) | None => break,
+                }
+            }
+        }
     }
 }

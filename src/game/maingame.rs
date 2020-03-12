@@ -6,9 +6,7 @@ use crate::engine::mob::MobId;
 use crate::engine::player::Player;
 use crate::engine::world::World;
 use crate::error::ZResult;
-use crate::game::server::{
-    add_explosion_to_world, process_explosions, BombList, ExplosionList, MobList, PlayerList,
-};
+use crate::game::server::{game_process_explosions, BombList, ExplosionList, MobList, PlayerList};
 use log::*;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::{Duration, Instant};
@@ -47,7 +45,7 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
 
         player_connect_events(&mut player_join_rx, &mut players).await;
         process_player_inputs(&mut players, &mut world).await;
-        process_explosions(delta_time, &mut explosions, &mut bombs, &mut world);
+        game_process_explosions(delta_time, &mut explosions, &mut bombs, &mut world);
 
         // Remove dead players.
         players.retain(|_, p| !p.is_dead());

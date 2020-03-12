@@ -3,18 +3,18 @@ use itertools::Itertools;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ZonePosition {
-    pub x: u32,
-    pub y: u32,
+    pub x: i32,
+    pub y: i32,
 }
 
 impl ZonePosition {
-    pub fn new(x: u32, y: u32) -> Self {
+    pub fn new(x: i32, y: i32) -> Self {
         ZonePosition { x, y }
     }
 
     pub fn from_map_position(pos: MapPosition, zone_size: SizeInTiles) -> Self {
-        let x = (pos.x as f64 / zone_size.width as f64) as u32;
-        let y = (pos.y as f64 / zone_size.height as f64) as u32;
+        let x = (pos.x as f64 / zone_size.width as f64) as i32;
+        let y = (pos.y as f64 / zone_size.height as f64) as i32;
         ZonePosition { x, y }
     }
 }
@@ -26,13 +26,13 @@ pub struct ZoneIndex(usize);
 pub struct WorldZone {
     position: MapPosition,
     size: SizeInTiles,
-    num_blocks: u32,
-    num_players: u32,
-    block_quota: u32,
+    num_blocks: i32,
+    num_players: i32,
+    block_quota: i32,
 }
 
 impl WorldZone {
-    pub fn new(position: MapPosition, size: SizeInTiles, block_quota: u32) -> Self {
+    pub fn new(position: MapPosition, size: SizeInTiles, block_quota: i32) -> Self {
         WorldZone {
             position,
             size,
@@ -65,19 +65,18 @@ pub struct WorldZoneData {
 
 impl WorldZoneData {
     pub fn new(
-        zone_width: u32,
-        zone_height: u32,
-        width_in_tiles: u32,
-        height_in_tiles: u32,
+        zone_width: i32,
+        zone_height: i32,
+        width_in_tiles: i32,
+        height_in_tiles: i32,
         quota_factor: f64,
-    ) -> Self
-    {
+    ) -> Self {
         let mut zones_across = (width_in_tiles as f64 / zone_width as f64) as usize;
         let mut last_width = zone_width;
         let remainder_width = width_in_tiles as usize % zones_across;
         if remainder_width > 0 {
             zones_across += 1;
-            last_width = remainder_width as u32;
+            last_width = remainder_width as i32;
         }
 
         let mut zones_down = (height_in_tiles as f64 / zone_height as f64) as usize;
@@ -85,7 +84,7 @@ impl WorldZoneData {
         let remainder_height = height_in_tiles as usize % zones_down;
         if remainder_height > 0 {
             zones_down += 1;
-            last_height = remainder_height as u32;
+            last_height = remainder_height as i32;
         }
 
         let mut zones = Vec::with_capacity(zones_across * zones_down);
@@ -103,11 +102,11 @@ impl WorldZoneData {
                 };
 
                 zones.push(WorldZone {
-                    position: MapPosition::new(x as u32 * zone_width, y as u32 * zone_height),
+                    position: MapPosition::new(x as i32 * zone_width, y as i32 * zone_height),
                     size: SizeInTiles::new(zwidth, zheight),
                     num_blocks: 0,
                     num_players: 0,
-                    block_quota: ((zwidth * zheight) as f64 * quota_factor) as u32,
+                    block_quota: ((zwidth * zheight) as f64 * quota_factor) as i32,
                 });
             }
         }
@@ -121,7 +120,7 @@ impl WorldZoneData {
     }
 
     pub fn get_zone_index(&self, pos: ZonePosition) -> ZoneIndex {
-        ZoneIndex(((pos.y * self.zones_across as u32) + pos.x) as usize)
+        ZoneIndex(((pos.y * self.zones_across as i32) + pos.x) as usize)
     }
 
     pub fn map_to_zone_index(&self, pos: MapPosition) -> ZoneIndex {

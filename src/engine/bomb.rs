@@ -4,6 +4,7 @@ use crate::{
     engine::{explosion::Explosion, player::Player, position::MapPosition},
     tools::itemstore::HasId,
 };
+use bitflags::_core::ops::Deref;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -16,6 +17,24 @@ impl From<u64> for BombId {
     }
 }
 
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct BombRange(u32);
+
+impl From<u32> for BombRange {
+    fn from(value: u32) -> Self {
+        BombRange(value)
+    }
+}
+
+impl Deref for BombRange {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Bomb {
     id: BombId,
@@ -25,7 +44,7 @@ pub struct Bomb {
     #[serde(flatten)]
     position: MapPosition,
     remaining: f64, // TODO: wrap this in a newtype TimeRemaining(f64)
-    range: u32,     // TODO: wrap this in a newtype BombRange(u32)
+    range: BombRange,
     timestamp: Timestamp,
 }
 
@@ -63,6 +82,10 @@ impl Bomb {
         self.position
     }
 
+    pub fn range(&self) -> BombRange {
+        self.range
+    }
+
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
@@ -76,6 +99,10 @@ impl Bomb {
         } else {
             None
         }
+    }
+
+    pub fn terminate(&mut self) {
+        self.active = false;
     }
 }
 
