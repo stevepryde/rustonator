@@ -1,5 +1,5 @@
 use crate::engine::bomb::{Bomb, BombId};
-use crate::engine::explosion::{Explosion, ExplosionId};
+use crate::engine::explosion::Explosion;
 use crate::engine::position::PositionOffset;
 use crate::game::server::{BombList, ExplosionList};
 use crate::utils::misc::Timestamp;
@@ -16,7 +16,7 @@ use crate::{
 };
 use rand::Rng;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug, Serialize)]
 pub struct WorldSize {
@@ -180,7 +180,16 @@ impl World {
     }
 
     pub fn set_mob_data(&mut self, pos: MapPosition, timestamp: Timestamp) {
-        self.data_mob.set_at(pos, timestamp);
+        match self.data_mob.get_at(pos) {
+            Some(ts) => {
+                // Only overwrite the bomb timestamp if it's sooner
+                // i.e. if this one was deployed before the existing one
+                if timestamp < *ts {
+                    self.data_mob.set_at(pos, timestamp);
+                }
+            }
+            None => self.data_mob.set_at(pos, timestamp),
+        }
     }
 
     pub fn get_mob_data(&self, pos: MapPosition) -> Option<&Timestamp> {
@@ -316,7 +325,7 @@ impl World {
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb, bombs: &mut BombList) {
-        self.update_bomb_path(&bomb);
+        self.update_bomb_path(&bomb, &bombs);
         let pos = bomb.position();
         let id = bombs.add(bomb);
         self.data_internal.set_at(pos, InternalCellData::Bomb(id));
@@ -329,33 +338,62 @@ impl World {
             .set_at(pos, InternalCellData::Explosion(id));
     }
 
-    pub fn update_bomb_path(&mut self, bomb: &Bomb) {
-        self.set_mob_data(bomb.position(), bomb.timestamp());
+    /// This will walk the entire bomb path, collecting the soonest explosion time along the way.
+    /// Once found, it will update the mob data timestamp to that earliest time for all of
+    /// the positions it finds. This is because an explosion of any one of these bombs will
+    /// result in all of them going boom, thus mobs need to know _that_ time not just the
+    /// timestamp for the nearest bomb.
+    pub fn update_bomb_path(&mut self, bomb: &Bomb, bombs: &BombList) {
+        let mut bombs_to_follow: VecDeque<BombId> = VecDeque::new();
+        bombs_to_follow.push_back(bomb.id());
+        let mut seen: HashSet<MapPosition> = HashSet::new();
+        seen.insert(bomb.position());
 
-        for offset in vec![
-            PositionOffset::up(1),
-            PositionOffset::down(1),
-            PositionOffset::left(1),
-            PositionOffset::right(1),
-        ]
-        .into_iter()
-        {
-            for dist in 1..=*bomb.range() {
-                let pos = bomb.position() + (offset * dist as i32);
-                match self.get_cell(pos) {
-                    // Explosions can pass through the following.
-                    Some(CellType::Empty)
-                    | Some(CellType::ItemBomb)
-                    | Some(CellType::ItemRange)
-                    | Some(CellType::ItemRandom)
-                    | Some(CellType::MobSpawner) => self.set_mob_data(pos, bomb.timestamp()),
-                    // The following will block an explosion, so stop.
-                    Some(CellType::Wall)
-                    | Some(CellType::Mystery)
-                    | Some(CellType::Bomb)
-                    | None => break,
+        let mut earliest_ts = bomb.timestamp();
+
+        while let Some(bomb_id) = bombs_to_follow.pop_front() {
+            if let Some(b) = bombs.get(bomb_id) {
+                if b.timestamp() < earliest_ts {
+                    earliest_ts = b.timestamp();
+                }
+
+                for offset in vec![
+                    PositionOffset::up(1),
+                    PositionOffset::down(1),
+                    PositionOffset::left(1),
+                    PositionOffset::right(1),
+                ]
+                .into_iter()
+                {
+                    for dist in 1..=*b.range() {
+                        let pos = b.position() + (offset * dist as i32);
+                        match self.get_cell(pos) {
+                            Some(CellType::Bomb) => {
+                                if let Some(InternalCellData::Bomb(bomb_id)) =
+                                    self.data_internal.get_at(pos)
+                                {
+                                    bombs_to_follow.push_back(*bomb_id);
+                                }
+                            }
+                            // Explosions can pass through the following.
+                            Some(CellType::Empty)
+                            | Some(CellType::ItemBomb)
+                            | Some(CellType::ItemRange)
+                            | Some(CellType::ItemRandom)
+                            | Some(CellType::MobSpawner) => {
+                                seen.insert(pos);
+                            }
+                            // The following will block an explosion, so stop.
+                            Some(CellType::Wall) | Some(CellType::Mystery) | None => break,
+                        }
+                    }
                 }
             }
+        }
+
+        // Now set the earliest timestamp at all locations!
+        for pos in seen {
+            self.data_mob.set_at(pos, earliest_ts);
         }
     }
 
@@ -365,22 +403,30 @@ impl World {
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
     ) {
-        if let Some(CellType::Bomb) = self.get_cell(bomb.position()) {
-            self.set_cell(bomb.position(), CellType::Empty);
-            self.clear_internal_cell(bomb.position());
-        }
+        let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
+        bombs_to_explode.push_back(bomb.id());
+        while let Some(bomb_id) = bombs_to_explode.pop_front() {
+            if let Some(b) = bombs.get_mut(bomb_id) {
+                if let Some(CellType::Bomb) = self.get_cell(b.position()) {
+                    self.set_cell(b.position(), CellType::Empty);
+                    self.clear_internal_cell(b.position());
+                }
 
-        self.explode_bomb_path(bomb, bombs, explosions);
-        bomb.terminate();
+                let bombs_cascade = self.explode_bomb_path(b, explosions);
+                b.terminate();
+                bombs_to_explode.extend(bombs_cascade);
+            }
+        }
     }
 
     pub fn explode_bomb_path(
         &mut self,
         bomb: &Bomb,
-        bombs: &mut BombList,
         explosions: &mut ExplosionList,
-    ) {
+    ) -> Vec<BombId> {
         self.add_explosion(Explosion::from(bomb.clone()), explosions);
+
+        let mut bombs_cascade = Vec::new();
 
         for offset in vec![
             PositionOffset::up(1),
@@ -398,14 +444,12 @@ impl World {
                         if let Some(InternalCellData::Bomb(bomb_id)) =
                             self.data_internal.get_at(pos)
                         {
-                            if let Some(b) = bombs.get_mut(*bomb_id) {
-                                // TODO: Of course this doesn't work.
-                                // Try getting all of the positions first.
-                                // Return explosion positions and then the list of bomb positions.
-                                // Explode the explosions, then explode the bombs.
-                                self.explode_bomb(b, bombs, explosions);
-                            }
+                            bombs_cascade.push(*bomb_id);
+                        } else {
+                            // Can't find bomb? Might as well assume the cell is empty.
+                            self.add_explosion(Explosion::from(bomb.clone()), explosions);
                         }
+                        break;
                     }
                     // Explosions can pass through the following.
                     Some(CellType::Empty)
@@ -420,5 +464,6 @@ impl World {
                 }
             }
         }
+        bombs_cascade
     }
 }

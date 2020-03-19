@@ -1,5 +1,5 @@
 use crate::comms::playercomm::{PlayerComm, PlayerMessage};
-use crate::engine::bomb::BombRange;
+use crate::engine::bomb::{BombRange, BombTime};
 use crate::engine::world::World;
 use crate::error::{ZError, ZResult};
 use crate::utils::misc::Timestamp;
@@ -72,7 +72,7 @@ pub struct Player {
     speed: f64,
     image: String,
     range: BombRange,
-    bomb_time: f64,
+    bomb_time: BombTime,
     max_bombs: u32,
     cur_bombs: u32,
     flags: PlayerFlags,
@@ -98,7 +98,7 @@ impl Player {
             speed: 200.0,
             image: String::from("p1"),
             range: BombRange::from(1),
-            bomb_time: 3.0,
+            bomb_time: BombTime::from(3.0),
             max_bombs: 1,
             cur_bombs: 0,
             flags: PlayerFlags::default(),
@@ -152,7 +152,7 @@ impl Player {
         self.position
     }
 
-    pub fn bomb_time(&self) -> f64 {
+    pub fn bomb_time(&self) -> BombTime {
         self.bomb_time
     }
 

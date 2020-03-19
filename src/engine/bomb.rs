@@ -4,8 +4,9 @@ use crate::{
     engine::{explosion::Explosion, player::Player, position::MapPosition},
     tools::itemstore::HasId,
 };
-use bitflags::_core::ops::Deref;
 use serde::{Deserialize, Serialize};
+use std::ops::{Add, AddAssign, Deref, SubAssign};
+use std::time::Duration;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -35,6 +36,78 @@ impl Deref for BombRange {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct BombTime(f64);
+
+impl BombTime {
+    pub fn millis(self) -> f64 {
+        self.0
+    }
+
+    pub fn clear(&mut self) {
+        self.0 = 0.0;
+    }
+
+    pub fn is_done(self) -> bool {
+        self.0 <= 0.0
+    }
+}
+
+impl From<f64> for BombTime {
+    fn from(value: f64) -> Self {
+        BombTime(value)
+    }
+}
+
+impl Deref for BombTime {
+    type Target = f64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Add<f64> for BombTime {
+    type Output = BombTime;
+
+    fn add(self, rhs: f64) -> Self::Output {
+        BombTime(self.0 + rhs)
+    }
+}
+
+impl AddAssign<f64> for BombTime {
+    fn add_assign(&mut self, rhs: f64) {
+        self.0 += rhs;
+    }
+}
+
+impl SubAssign<f64> for BombTime {
+    fn sub_assign(&mut self, rhs: f64) {
+        self.0 -= rhs;
+    }
+}
+
+impl Add<Duration> for BombTime {
+    type Output = BombTime;
+
+    fn add(self, rhs: Duration) -> Self::Output {
+        BombTime(self.0 + rhs.as_secs_f64())
+    }
+}
+
+impl AddAssign<Duration> for BombTime {
+    fn add_assign(&mut self, rhs: Duration) {
+        self.0 += rhs.as_secs_f64();
+    }
+}
+
+impl SubAssign<Duration> for BombTime {
+    fn sub_assign(&mut self, rhs: Duration) {
+        self.0 -= rhs.as_secs_f64();
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Bomb {
     id: BombId,
@@ -43,7 +116,7 @@ pub struct Bomb {
     active: bool,
     #[serde(flatten)]
     position: MapPosition,
-    remaining: f64, // TODO: wrap this in a newtype TimeRemaining(f64)
+    remaining: BombTime,
     range: BombRange,
     timestamp: Timestamp,
 }
@@ -58,7 +131,8 @@ impl Bomb {
             position,
             remaining: player.bomb_time(),
             range: player.range(),
-            timestamp: Timestamp::new(),
+            // Set the timestamp to the explosion timestamp
+            timestamp: Timestamp::new() + player.bomb_time(),
         }
     }
 
@@ -92,8 +166,8 @@ impl Bomb {
 
     pub fn tick(&mut self, delta_time: f64) -> Option<Explosion> {
         self.remaining -= delta_time;
-        if self.remaining <= 0.0 {
-            self.remaining = 0.0;
+        if self.remaining.is_done() {
+            self.remaining.clear();
             self.active = false;
             Some(Explosion::new(Some(&self), self.position))
         } else {

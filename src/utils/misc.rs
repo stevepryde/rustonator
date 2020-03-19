@@ -1,7 +1,10 @@
+use crate::engine::bomb::BombTime;
 use chrono::Utc;
 use serde::Serialize;
+use std::ops::Add;
+use std::time::Duration;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct Timestamp(i64);
 
@@ -18,5 +21,21 @@ impl Timestamp {
 
     pub fn zero() -> Self {
         Timestamp(0)
+    }
+}
+
+impl Add<Duration> for Timestamp {
+    type Output = Timestamp;
+
+    fn add(self, rhs: Duration) -> Self::Output {
+        Timestamp(self.0 + rhs.as_millis() as i64)
+    }
+}
+
+impl Add<BombTime> for Timestamp {
+    type Output = Timestamp;
+
+    fn add(self, rhs: BombTime) -> Self::Output {
+        Timestamp(self.0 + rhs.millis() as i64)
     }
 }
