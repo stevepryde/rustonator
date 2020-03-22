@@ -1,23 +1,24 @@
-use crate::comms::playercomm::{PlayerComm, PlayerMessage};
-use crate::engine::bomb::{BombRange, BombTime};
-use crate::engine::world::World;
-use crate::error::{ZError, ZResult};
-use crate::utils::misc::Timestamp;
 use crate::{
+    comms::playercomm::{PlayerComm, PlayerMessage},
     component::{
         action::Action,
         effect::{Effect, EffectType},
     },
-    engine::position::PixelPositionF64,
+    engine::{
+        bomb::{BombRange, BombTime},
+        position::PixelPositionF64,
+        world::World,
+    },
+    error::{ZError, ZResult},
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
     },
+    utils::misc::Timestamp,
 };
 use bitflags::bitflags;
 use log::*;
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -166,6 +167,12 @@ impl Player {
 
     pub fn bomb_placed(&mut self) {
         self.cur_bombs += 1;
+    }
+
+    pub fn bomb_exploded(&mut self) {
+        if self.cur_bombs > 0 {
+            self.cur_bombs -= 1;
+        }
     }
 
     pub fn ws(&self) -> &PlayerComm {

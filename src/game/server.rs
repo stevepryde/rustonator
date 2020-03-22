@@ -1,11 +1,15 @@
-use crate::engine::bomb::{Bomb, BombId};
-use crate::engine::explosion::{Explosion, ExplosionId};
-use crate::engine::mob::{Mob, MobId};
-use crate::engine::player::{Player, PlayerId};
-use crate::engine::position::{MapPosition, PositionOffset};
-use crate::engine::world::World;
-use crate::tools::itemstore::ItemStore;
-use crate::traits::celltypes::CellType;
+use crate::{
+    engine::{
+        bomb::{Bomb, BombId},
+        explosion::{Explosion, ExplosionId},
+        mob::{Mob, MobId},
+        player::{Player, PlayerId},
+        position::{MapPosition, PositionOffset},
+        world::World,
+    },
+    tools::itemstore::ItemStore,
+    traits::celltypes::CellType,
+};
 use std::collections::HashMap;
 
 pub type PlayerList = HashMap<PlayerId, Player>;
@@ -18,10 +22,14 @@ pub fn game_process_explosions(
     explosions: &mut ExplosionList,
     bombs: &mut BombList,
     world: &mut World,
-) {
+)
+{
     // Update remaining time for all bombs and explosions.
     for explosion in explosions.iter_mut() {
         explosion.update(delta_time);
+        if !explosion.is_active() {
+            world.clear_explosion_cell(explosion);
+        }
     }
 
     explosions.retain(|_, e| e.is_active());

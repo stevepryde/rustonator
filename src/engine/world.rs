@@ -1,18 +1,22 @@
-use crate::engine::bomb::{Bomb, BombId};
-use crate::engine::explosion::Explosion;
-use crate::engine::position::PositionOffset;
-use crate::game::server::{BombList, ExplosionList};
-use crate::utils::misc::Timestamp;
 use crate::{
     engine::{
+        bomb::{Bomb, BombId},
         config::GameConfig,
-        position::{MapPosition, PixelPositionF64, SizeInPixels, SizeInTiles},
+        explosion::Explosion,
+        position::{MapPosition, PixelPositionF64, PositionOffset, SizeInPixels, SizeInTiles},
         worlddata::{
-            InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
+            InternalCellData,
+            InternalMobData,
+            InternalWorldData,
+            MobSpawner,
+            WorldChunk,
+            WorldData,
         },
         worldzone::WorldZoneData,
     },
+    game::server::{BombList, ExplosionList, PlayerList},
     traits::celltypes::CellType,
+    utils::misc::Timestamp,
 };
 use rand::Rng;
 use serde::Serialize;
@@ -338,11 +342,29 @@ impl World {
             .set_at(pos, InternalCellData::Explosion(id));
     }
 
-    /// This will walk the entire bomb path, collecting the soonest explosion time along the way.
-    /// Once found, it will update the mob data timestamp to that earliest time for all of
-    /// the positions it finds. This is because an explosion of any one of these bombs will
-    /// result in all of them going boom, thus mobs need to know _that_ time not just the
-    /// timestamp for the nearest bomb.
+    pub fn add_visual_only_explosion(&mut self, pos: MapPosition, explosions: &mut ExplosionList) {
+        explosions.add(Explosion::from(pos));
+    }
+
+    pub fn clear_explosion_cell(&mut self, explosion: &Explosion) {
+        let pos = explosion.position();
+        self.clear_internal_cell(pos);
+
+        // Also let mobs know it's "safe" here now
+        if match self.data_mob.get_at(pos) {
+            Some(ts) => explosion.timestamp() > *ts,
+            None => true,
+        } {
+            self.clear_mob_data(pos);
+        }
+    }
+
+    /// This will walk the entire bomb path, collecting the soonest explosion
+    /// time along the way. Once found, it will update the mob data
+    /// timestamp to that earliest time for all of the positions it finds.
+    /// This is because an explosion of any one of these bombs will
+    /// result in all of them going boom, thus mobs need to know _that_ time not
+    /// just the timestamp for the nearest bomb.
     pub fn update_bomb_path(&mut self, bomb: &Bomb, bombs: &BombList) {
         let mut bombs_to_follow: VecDeque<BombId> = VecDeque::new();
         bombs_to_follow.push_back(bomb.id());
@@ -402,7 +424,9 @@ impl World {
         bomb: &mut Bomb,
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
-    ) {
+        players: &mut PlayerList,
+    )
+    {
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
         bombs_to_explode.push_back(bomb.id());
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
@@ -413,6 +437,11 @@ impl World {
                 }
 
                 let bombs_cascade = self.explode_bomb_path(b, explosions);
+                // Update player bomb count.
+                if let Some(p) = players.get_mut(&b.pid()) {
+                    p.bomb_exploded();
+                }
+
                 b.terminate();
                 bombs_to_explode.extend(bombs_cascade);
             }
@@ -423,7 +452,8 @@ impl World {
         &mut self,
         bomb: &Bomb,
         explosions: &mut ExplosionList,
-    ) -> Vec<BombId> {
+    ) -> Vec<BombId>
+    {
         self.add_explosion(Explosion::from(bomb.clone()), explosions);
 
         let mut bombs_cascade = Vec::new();
@@ -452,15 +482,38 @@ impl World {
                         break;
                     }
                     // Explosions can pass through the following.
-                    Some(CellType::Empty)
-                    | Some(CellType::ItemBomb)
+                    Some(CellType::ItemBomb)
                     | Some(CellType::ItemRange)
-                    | Some(CellType::ItemRandom)
-                    | Some(CellType::MobSpawner) => {
-                        self.add_explosion(Explosion::from(bomb.clone()), explosions)
+                    | Some(CellType::ItemRandom) => {
+                        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+                        self.set_cell(pos, CellType::Empty);
                     }
+                    Some(CellType::Empty) | Some(CellType::MobSpawner) => {
+                        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+                    }
+
                     // The following will block an explosion, so stop.
-                    Some(CellType::Wall) | Some(CellType::Mystery) | None => break,
+                    Some(CellType::Mystery) => {
+                        // This will become a powerup item.
+                        let r: f64 = rand::thread_rng().gen();
+                        let item = if r > 0.9 {
+                            // 10% chance.
+                            CellType::ItemBomb
+                        } else if r > 0.8 {
+                            // 10% chance.
+                            CellType::ItemRange
+                        } else if r > 0.5 {
+                            // 30% chance.
+                            // Mystery item. Contents are determined at random when player picks
+                            // it up.
+                            CellType::ItemRandom
+                        } else {
+                            CellType::Empty
+                        };
+                        self.set_cell(pos, item);
+                        break;
+                    }
+                    Some(CellType::Wall) | None => break,
                 }
             }
         }

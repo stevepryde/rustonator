@@ -1,8 +1,7 @@
-use crate::engine::player::PlayerId;
-use crate::utils::misc::Timestamp;
 use crate::{
-    engine::{bomb::Bomb, position::MapPosition},
+    engine::{bomb::Bomb, player::PlayerId, position::MapPosition},
     tools::itemstore::HasId,
+    utils::misc::Timestamp,
 };
 use serde::{Deserialize, Serialize};
 
@@ -53,6 +52,10 @@ impl Explosion {
 
     pub fn position(&self) -> MapPosition {
         self.position
+    }
+
+    pub fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     pub fn update(&mut self, delta_time: f64) {
