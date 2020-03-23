@@ -153,12 +153,56 @@ impl Player {
         self.position
     }
 
+    pub fn score(&self) -> u32 {
+        self.score
+    }
+
+    pub fn increase_score(&mut self, amount: u32) {
+        self.score += amount;
+    }
+
+    pub fn decrease_score(&mut self, amount: u32) {
+        if self.score > amount {
+            self.score -= amount;
+        } else {
+            self.score = 0;
+        }
+    }
+
     pub fn bomb_time(&self) -> BombTime {
         self.bomb_time
     }
 
+    pub fn increase_bomb_time(&mut self) {
+        self.bomb_time += 1.0;
+    }
+
+    pub fn decrease_bomb_time(&mut self) {
+        if self.bomb_time > BombTime::from(2.0) {
+            self.bomb_time -= 1.0;
+        }
+    }
+
     pub fn range(&self) -> BombRange {
         self.range
+    }
+
+    pub fn increase_range(&mut self) {
+        self.range += 1;
+    }
+
+    pub fn decrease_range(&mut self) {
+        if self.range > BombRange::from(1) {
+            self.range -= 1;
+        }
+    }
+
+    pub fn max_bombs(&self) -> u32 {
+        self.max_bombs
+    }
+
+    pub fn cur_bombs(&self) -> u32 {
+        self.cur_bombs
     }
 
     pub fn has_bomb_remaining(&self) -> bool {
@@ -175,8 +219,18 @@ impl Player {
         }
     }
 
-    pub fn ws(&self) -> &PlayerComm {
-        &self.ws
+    pub fn increase_max_bombs(&mut self) {
+        self.max_bombs += 1;
+    }
+
+    pub fn decrease_max_bombs(&mut self) {
+        if self.max_bombs > 0 {
+            self.max_bombs -= 1;
+        }
+    }
+
+    pub fn ws(&mut self) -> &mut PlayerComm {
+        &mut self.ws
     }
 
     pub fn update(&mut self, delta_time: f64) {
@@ -212,7 +266,7 @@ impl Player {
         self.position.y += tmp_action.get_y() as f64 * delta_time * effective_speed;
     }
 
-    fn add_effect(&mut self, effect: Effect) {
+    pub fn add_effect(&mut self, effect: Effect) {
         let mut effect = effect;
         match effect.effect_type {
             EffectType::SpeedUp => {
@@ -244,15 +298,15 @@ impl Player {
         }
     }
 
-    fn add_flag(&mut self, flag: PlayerFlags) {
+    pub fn add_flag(&mut self, flag: PlayerFlags) {
         self.flags |= flag;
     }
 
-    fn del_flag(&mut self, flag: PlayerFlags) {
+    pub fn del_flag(&mut self, flag: PlayerFlags) {
         self.flags &= !flag;
     }
 
-    fn has_flag(&self, flag: PlayerFlags) -> bool {
+    pub fn has_flag(&self, flag: PlayerFlags) -> bool {
         self.flags.contains(flag)
     }
 
@@ -264,7 +318,7 @@ impl Player {
         self.action = action;
     }
 
-    fn add_random_effect(&mut self) -> String {
+    pub fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
             rand::thread_rng().gen_range(3.0f64, 8.0f64),

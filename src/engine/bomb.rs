@@ -1,12 +1,17 @@
-use crate::engine::player::PlayerId;
-use crate::utils::misc::Timestamp;
 use crate::{
-    engine::{explosion::Explosion, player::Player, position::MapPosition},
+    engine::{
+        explosion::Explosion,
+        player::{Player, PlayerId},
+        position::MapPosition,
+    },
     tools::itemstore::HasId,
+    utils::misc::Timestamp,
 };
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign, Deref, SubAssign};
-use std::time::Duration;
+use std::{
+    ops::{Add, AddAssign, Deref, SubAssign},
+    time::Duration,
+};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -18,7 +23,7 @@ impl From<u64> for BombId {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct BombRange(u32);
 
@@ -33,6 +38,26 @@ impl Deref for BombRange {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Add<u32> for BombRange {
+    type Output = BombRange;
+
+    fn add(self, rhs: u32) -> Self::Output {
+        BombRange(self.0 + rhs)
+    }
+}
+
+impl AddAssign<u32> for BombRange {
+    fn add_assign(&mut self, rhs: u32) {
+        self.0 += rhs;
+    }
+}
+
+impl SubAssign<u32> for BombRange {
+    fn sub_assign(&mut self, rhs: u32) {
+        self.0 -= rhs;
     }
 }
 

@@ -1,16 +1,19 @@
-use crate::comms::websocket::{WsError, WsResult};
-use crate::component::action::Action;
-use crate::engine::player::{Player, PlayerId, SerPlayer};
-use crate::engine::world::World;
-use crate::engine::worlddata::SerWorldData;
-use crate::error::{ZError, ZResult};
+use crate::{
+    comms::websocket::{WsError, WsResult},
+    component::action::Action,
+    engine::{
+        player::{Player, PlayerId, SerPlayer},
+        world::World,
+        worlddata::SerWorldData,
+    },
+    error::{ZError, ZResult},
+};
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::ops::Deref;
-use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{error::TryRecvError, Receiver, Sender};
 
 pub type PlayerSender = Sender<PlayerMessageExternal>;
 pub type PlayerReceiver = Receiver<PlayerMessageExternal>;
@@ -31,6 +34,7 @@ pub enum PlayerMessage {
     JoinGame(String),
     Action(Action),
     SpawnPlayer(SerPlayer, SerWorldData),
+    PowerUp(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +85,10 @@ impl PlayerComm {
             .await
             .map_err(|e| ZError::from(WsError::from(e)))?;
         Ok(())
+    }
+
+    pub async fn send_powerup(&mut self, powerup: &str) -> ZResult<()> {
+        self.send(PlayerMessage::PowerUp(powerup.to_string())).await
     }
 }
 
