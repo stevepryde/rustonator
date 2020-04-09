@@ -5,18 +5,19 @@ use crate::{
         explosion::{Explosion, ExplosionId},
         mob::{Mob, MobId},
         player::{Player, PlayerFlags, PlayerId},
-        position::{MapPosition, PositionOffset},
+        position::{MapPosition, PixelPositionF64, PositionOffset},
         world::World,
+        worlddata::MobSpawner,
     },
     error::ZResult,
     tools::itemstore::ItemStore,
     traits::celltypes::CellType,
 };
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 use std::collections::HashMap;
 
 pub type PlayerList = HashMap<PlayerId, Player>;
-pub type MobList = HashMap<MobId, Mob>;
+pub type MobList = ItemStore<MobId, Mob>;
 pub type ExplosionList = ItemStore<ExplosionId, Explosion>;
 pub type BombList = ItemStore<BombId, Bomb>;
 
@@ -149,5 +150,34 @@ pub async fn player_got_item(player: &mut Player, item: CellType) -> ZResult<boo
             Ok(true)
         }
         _ => Ok(false),
+    }
+}
+
+/// Spawn mob at a random mob spawner, and assign it a new target.
+/// You'll want to pass in a clone of Vec<MobSpawner> because we shuffle it
+/// in-place here.
+pub fn spawn_mob(
+    mobs: &mut MobList,
+    mut spawners: Vec<MobSpawner>,
+    world: &World,
+    players: &PlayerList,
+)
+{
+    let mob_positions: Vec<MapPosition> = mobs
+        .iter()
+        .map(|m| m.position().to_map_position(world))
+        .collect();
+    spawners.shuffle(&mut rand::thread_rng());
+    for spawner in spawners {
+        if !world.is_nearby_map_entity(spawner.position(), &mob_positions, 3) {
+            let mut mob = Mob::new();
+            mob.set_position(PixelPositionF64::from_map_position(
+                spawner.position(),
+                world,
+            ));
+            mob.choose_new_target(world, players);
+            mobs.add(mob);
+            break;
+        }
     }
 }

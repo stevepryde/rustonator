@@ -1,5 +1,6 @@
 use crate::engine::world::World;
 use itertools::Chunk;
+use rand::{thread_rng, Rng};
 use serde::Serialize;
 use std::ops::{Add, Mul};
 
@@ -79,6 +80,10 @@ impl MapPosition {
         diffu32(pos.x, self.x) < range && diffu32(pos.y, self.y) < range
     }
 
+    pub fn is_top_left(self) -> bool {
+        self.x == 1 && self.y == 1
+    }
+
     pub fn up(self, dist: i32) -> Self {
         Self {
             x: self.x,
@@ -103,6 +108,18 @@ impl MapPosition {
             y: self.y,
         }
     }
+
+    pub fn random_offset(self, range: u32) -> Self {
+        let irange = range as i32; // Don't worry, the range will always be small.
+        Self {
+            x: self.x + thread_rng().gen_range(-irange, irange),
+            y: self.y + thread_rng().gen_range(-irange, irange),
+        }
+    }
+
+    pub fn distance_to(self, pos: MapPosition) -> u32 {
+        (pos.y - self.y).abs() as u32 + (pos.x - self.x).abs() as u32
+    }
 }
 
 impl Add<PositionOffset> for MapPosition {
@@ -122,8 +139,7 @@ pub struct PixelPosition<T: Serialize> {
 }
 
 impl<T: Serialize> PixelPosition<T>
-where
-    T: From<f64> + Into<f64> + Copy,
+where T: From<f64> + Into<f64> + Copy
 {
     pub fn new(x: T, y: T) -> Self {
         PixelPosition { x, y }
@@ -175,9 +191,7 @@ impl ChunkPosition {
     }
 
     pub fn from_pixel_position<T>(pos: PixelPosition<T>, world: &World) -> Self
-    where
-        T: From<f64> + Into<f64> + Serialize + Copy,
-    {
+    where T: From<f64> + Into<f64> + Serialize + Copy {
         ChunkPosition::from_map_position(pos.to_map_position(world), world)
     }
 

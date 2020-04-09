@@ -1,12 +1,18 @@
 use crate::{
     component::action::Action,
-    engine::position::{MapPosition, PixelPositionF64},
+    engine::{
+        player::PlayerId,
+        position::{MapPosition, PixelPositionF64},
+        world::World,
+    },
+    game::server::PlayerList,
+    tools::itemstore::HasId,
     traits::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
     },
 };
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug)]
@@ -114,7 +120,7 @@ pub struct MobServerData {
     target_position: MapPosition,
     // Position when we switch direction, to prevent mob going in circles for modes 4 & 5.
     old_position: MapPosition,
-    target_player: String, // pid.
+    target_player: PlayerId,
     target_dir: MobTargetDir,
     range: u32,   // Visibility distance.
     smart: bool,  // Some bomb/explosion avoidance AI.
@@ -152,7 +158,7 @@ impl Default for Mob {
                 target_remaining: 0.0,
                 target_position: MapPosition::new(0, 0),
                 old_position: MapPosition::new(0, 0),
-                target_player: String::new(),
+                target_player: PlayerId::from(0),
                 target_dir: MobTargetDir::Up,
                 range: 8,
                 smart: rand::thread_rng().gen_range(0, 10) > 7,
@@ -169,6 +175,10 @@ impl Mob {
 
     pub fn position(&self) -> PixelPositionF64 {
         self.position
+    }
+
+    pub fn set_position(&mut self, pos: PixelPositionF64) {
+        self.position = pos;
     }
 
     pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f64) {
@@ -196,7 +206,67 @@ impl Mob {
         }
     }
 
-    // fn choose_new_target(&mut self, world: &World, playerList: &PlayerList) {}
+    pub fn choose_new_target(&mut self, world: &World, players: &PlayerList) {
+        if self.server_data.danger {
+            self.server_data.target_mode = MobTargetMode::DangerAvoidance;
+        } else {
+            self.server_data.target_mode = MobTargetMode::random();
+        }
+        let map_pos = self.position().to_map_position(world);
+
+        let mut has_target = false;
+        match self.server_data.target_mode {
+            MobTargetMode::NearbyCell => {
+                let blank = world.find_nearest_blank(map_pos.random_offset(self.server_data.range));
+                if !blank.is_top_left() {
+                    self.server_data.target_remaining = thread_rng().gen_range(5.0, 25.0);
+                    self.server_data.target_position = blank;
+                    has_target = true;
+                }
+            }
+            MobTargetMode::NearbyPlayer => {
+                for p in players.values() {
+                    if p.position()
+                        .to_map_position(world)
+                        .is_within_range(map_pos, self.server_data.range as i32)
+                    {
+                        self.server_data.target_player = p.id();
+                        self.server_data.target_remaining = thread_rng().gen_range(10.0, 120.0);
+                        has_target = true;
+                        break;
+                    }
+                }
+            }
+            MobTargetMode::Clockwise | MobTargetMode::Anticlockwise => {
+                self.server_data.target_remaining = thread_rng().gen_range(1.0, 5.0);
+                has_target = true;
+            }
+            MobTargetMode::ClockwiseNext | MobTargetMode::AnticlockwiseNext => {
+                self.server_data.old_position = map_pos;
+                self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
+                has_target = true;
+            }
+            MobTargetMode::DangerAvoidance => {
+                self.server_data.target_remaining = 99999.0;
+                let safest =
+                    world.path_find_nearest_safe_space(map_pos, self.server_data.range, self);
+                self.server_data.target_position = safest;
+                has_target = true;
+            }
+        }
+
+        if !has_target {
+            // Just assign a default - clockwise.
+            self.server_data.old_position = map_pos;
+            self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
+        }
+    }
+}
+
+impl HasId<MobId> for Mob {
+    fn set_id(&mut self, id: MobId) {
+        self.id = id;
+    }
 }
 
 impl CanPass for Mob {

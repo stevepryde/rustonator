@@ -1,15 +1,22 @@
-use crate::comms::playercomm::{PlayerConnectEvent, PlayerMessage};
-use crate::engine::bomb::{Bomb, BombId};
-use crate::engine::config::GameConfig;
-use crate::engine::explosion::ExplosionId;
-use crate::engine::mob::MobId;
-use crate::engine::player::Player;
-use crate::engine::world::World;
-use crate::error::ZResult;
-use crate::game::server::{game_process_explosions, BombList, ExplosionList, MobList, PlayerList};
+use crate::{
+    comms::playercomm::{PlayerConnectEvent, PlayerMessage},
+    engine::{
+        bomb::{Bomb, BombId},
+        config::GameConfig,
+        explosion::ExplosionId,
+        mob::MobId,
+        player::Player,
+        position::MapPosition,
+        world::World,
+    },
+    error::ZResult,
+    game::server::{game_process_explosions, BombList, ExplosionList, MobList, PlayerList},
+};
 use log::*;
-use tokio::sync::mpsc::Receiver;
-use tokio::time::{Duration, Instant};
+use tokio::{
+    sync::mpsc::Receiver,
+    time::{Duration, Instant},
+};
 
 pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZResult<()> {
     let config = GameConfig::new();
@@ -27,6 +34,8 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
     let mut last_frame = Instant::now();
     let mut count: u64 = 0;
     let mut first_frame = Instant::now();
+
+    let mut add_blocks_timer = Instant::now();
 
     loop {
         let delta_time = last_frame.elapsed().as_secs_f64();
@@ -50,6 +59,17 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
         // Remove dead players.
         players.retain(|_, p| !p.is_dead());
 
+        // Add blocks?
+        if add_blocks_timer.elapsed().as_secs() > 10 {
+            let entities: Vec<MapPosition> = players
+                .values()
+                .map(|p| p.position().to_map_position(&world))
+                .chain(mobs.iter().map(|m| m.position().to_map_position(&world)))
+                .collect();
+            world.populate_blocks(&entities);
+            add_blocks_timer = Instant::now();
+        }
+
         count += 1;
 
         let elapsed = first_frame.elapsed().as_secs_f64();
@@ -64,7 +84,8 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
 pub async fn player_connect_events(
     players_rx: &mut Receiver<PlayerConnectEvent>,
     players: &mut PlayerList,
-) {
+)
+{
     // Have any players joined?
     if let Ok(x) = players_rx.try_recv() {
         match x {

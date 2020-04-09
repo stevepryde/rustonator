@@ -12,10 +12,10 @@ use crate::{
             WorldChunk,
             WorldData,
         },
-        worldzone::WorldZoneData,
+        worldzone::{WorldZone, WorldZoneData},
     },
     game::server::{BombList, ExplosionList, PlayerList},
-    traits::celltypes::CellType,
+    traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
 use rand::Rng;
@@ -250,17 +250,17 @@ impl World {
         chunk
     }
 
-    pub fn is_nearby_entity(&self, pos: MapPosition, entities: &[PixelPositionF64]) -> bool {
-        entities
-            .iter()
-            .any(|p| p.to_map_position(self).is_within_range(pos, 4))
+    pub fn is_nearby_map_entity(
+        &self,
+        pos: MapPosition,
+        entities: &[MapPosition],
+        range: i32,
+    ) -> bool
+    {
+        entities.iter().any(|e| e.is_within_range(pos, range))
     }
 
-    pub fn is_nearby_map_entity(&self, pos: MapPosition, entities: &[MapPosition]) -> bool {
-        entities.iter().any(|e| e.is_within_range(pos, 4))
-    }
-
-    pub fn populate_blocks(&mut self, entities: &[PixelPositionF64], map_entities: &[MapPosition]) {
+    pub fn populate_blocks(&mut self, map_positions: &[MapPosition]) {
         let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
@@ -278,9 +278,7 @@ impl World {
                 continue;
             }
 
-            if !self.is_nearby_entity(blank, entities)
-                && !self.is_nearby_map_entity(blank, map_entities)
-            {
+            if !self.is_nearby_map_entity(blank, map_positions, 4) {
                 new_blocks.insert(blank);
                 break;
             }
@@ -518,5 +516,104 @@ impl World {
             }
         }
         bombs_cascade
+    }
+}
+
+pub struct PathFindData {
+    position: MapPosition,
+    travelled: u32,
+}
+
+impl PathFindData {
+    pub fn new(position: MapPosition, prev: Option<&PathFindData>) -> Self {
+        Self {
+            position,
+            travelled: prev.map(|pf| pf.travelled + 1).unwrap_or(0),
+        }
+    }
+}
+
+impl World {
+    pub fn get_possible_moves<T>(
+        &self,
+        agent: &T,
+        pf: &PathFindData,
+        seen: &HashSet<MapPosition>,
+    ) -> Vec<PathFindData>
+    where
+        T: CanPass,
+    {
+        let pos = pf.position;
+        let mut possible_moves = Vec::new();
+        for m in vec![pos.up(1), pos.right(1), pos.down(1), pos.left(1)] {
+            if seen.contains(&m) {
+                continue;
+            }
+
+            if let Some(cell_type) = self.get_cell(m) {
+                if agent.can_pass(cell_type) {
+                    possible_moves.push(PathFindData::new(m, Some(pf)));
+                }
+            }
+        }
+        possible_moves
+    }
+
+    pub fn path_find_nearest_safe_space<T>(
+        &self,
+        pos: MapPosition,
+        range: u32,
+        agent: &T,
+    ) -> MapPosition
+    where
+        T: CanPass,
+    {
+        if self.get_mob_data(pos).is_none() {
+            return pos;
+        }
+
+        let mut open_list: Vec<PathFindData> = Vec::with_capacity(4);
+        open_list.push(PathFindData::new(pos, None));
+
+        let mut seen: HashSet<MapPosition> = HashSet::new();
+        seen.insert(pos);
+
+        // Um, a timestamp of now definitely isn't safe! let's hope we find a better
+        // one.
+        let mut safest_timestamp = Timestamp::default();
+        let mut safest_pos = pos;
+
+        while !open_list.is_empty() {
+            open_list.sort_by_cached_key(|a| a.travelled);
+
+            let mut processed = 0;
+            for element in &open_list {
+                match self.get_mob_data(element.position) {
+                    None => return element.position,
+                    Some(ts) => {
+                        if ts > &safest_timestamp {
+                            safest_timestamp = *ts;
+                            safest_pos = element.position;
+                        }
+                    }
+                }
+
+                seen.insert(element.position);
+
+                processed += 1;
+                if element.travelled < range {
+                    let mut new_moves = self.get_possible_moves(agent, element, &seen);
+                    if !new_moves.is_empty() {
+                        open_list.append(&mut new_moves);
+                        // Since we've added new elements, sort the list before going further.
+                        break;
+                    }
+                }
+            }
+
+            // Remove processed items.
+            open_list = open_list.split_off(processed);
+        }
+        safest_pos
     }
 }
