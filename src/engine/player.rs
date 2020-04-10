@@ -262,8 +262,8 @@ impl Player {
         } else {
             self.speed
         };
-        self.position.x += tmp_action.get_x() as f64 * delta_time * effective_speed;
-        self.position.y += tmp_action.get_y() as f64 * delta_time * effective_speed;
+        self.position.x += tmp_action.x() as f64 * delta_time * effective_speed;
+        self.position.y += tmp_action.y() as f64 * delta_time * effective_speed;
     }
 
     pub fn add_effect(&mut self, effect: Effect) {

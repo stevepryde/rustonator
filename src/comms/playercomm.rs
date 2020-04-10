@@ -13,7 +13,10 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::ops::Deref;
-use tokio::sync::mpsc::{error::TryRecvError, Receiver, Sender};
+use tokio::{
+    sync::mpsc::{error::TryRecvError, Receiver, Sender},
+    time::Instant,
+};
 
 pub type PlayerSender = Sender<PlayerMessageExternal>;
 pub type PlayerReceiver = Receiver<PlayerMessageExternal>;
@@ -55,6 +58,7 @@ pub struct PlayerComm {
     uid: MessageId,
     sender: PlayerSender,
     receiver: PlayerReceiver,
+    last_seen: Instant,
 }
 
 impl PlayerComm {
@@ -64,6 +68,7 @@ impl PlayerComm {
             uid: MessageId(0),
             sender,
             receiver,
+            last_seen: Instant::now(),
         }
     }
 
@@ -71,9 +76,16 @@ impl PlayerComm {
         self.id
     }
 
+    pub fn last_seen_seconds(&self) -> u64 {
+        self.last_seen.elapsed().as_secs()
+    }
+
     pub async fn recv_one(&mut self) -> ZResult<Option<PlayerMessage>> {
         match self.receiver.try_recv() {
-            Ok(v) => Ok(Some(v.data)),
+            Ok(v) => {
+                self.last_seen = Instant::now();
+                Ok(Some(v.data))
+            }
             Err(TryRecvError::Empty) => Ok(None),
             _ => Err(ZError::WebSocketError(WsError::Disconnected)),
         }

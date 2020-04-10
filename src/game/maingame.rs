@@ -5,28 +5,45 @@ use crate::{
         config::GameConfig,
         explosion::ExplosionId,
         mob::MobId,
-        player::Player,
+        player::{Player, PlayerId},
         position::MapPosition,
         world::World,
+        worlddata::InternalCellData,
     },
     error::ZResult,
-    game::server::{game_process_explosions, BombList, ExplosionList, MobList, PlayerList},
+    game::server::{
+        game_process_explosions_and_bombs,
+        game_process_mobs,
+        spawn_mob,
+        BombList,
+        ExplosionList,
+        MobList,
+        PlayerList,
+    },
 };
 use log::*;
+use rand::{thread_rng, Rng};
 use tokio::{
     sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
 
+
+
 pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZResult<()> {
     let config = GameConfig::new();
-    let mut world = World::new(50, 50, &config);
+
+    let world_width = 50;
+    let world_height = 50;
+    let mut world = World::new(world_width, world_height, &config);
     let mob_spawners = world.add_mob_spawners();
 
     let mut players = PlayerList::new();
     let mut mobs = MobList::new();
     let mut bombs = BombList::new();
     let mut explosions = ExplosionList::new();
+
+    let max_mobs = (world_width as f64 * world_height as f64 * 0.4) as usize;
 
     // Limit max FPS.
     let min_timeslice: f64 = 1.0 / 60.0;
@@ -36,6 +53,8 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
     let mut first_frame = Instant::now();
 
     let mut add_blocks_timer = Instant::now();
+    let mut mob_spawn_timer = Instant::now();
+    let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
 
     loop {
         let delta_time = last_frame.elapsed().as_secs_f64();
@@ -54,10 +73,36 @@ pub async fn game_loop(mut player_join_rx: Receiver<PlayerConnectEvent>) -> ZRes
 
         player_connect_events(&mut player_join_rx, &mut players).await;
         process_player_inputs(&mut players, &mut world).await;
-        game_process_explosions(delta_time, &mut explosions, &mut bombs, &mut world);
+        game_process_explosions_and_bombs(delta_time, &mut explosions, &mut bombs, &mut world);
+        game_process_mobs(delta_time, &mut mobs, &mut players, &mut explosions, &world);
+
+        // Remove dead mobs.
+        mobs.retain(|_, m| m.is_active());
+
+        game_process_players(delta_time, &mut players)
+
+        // Update players.
+        world.zones_mut().clear_players();
+        for p in players.values_mut() {
+            if p.is_dead() {
+                continue;
+            }
+
+            p.update(delta_time);
+        }
 
         // Remove dead players.
         players.retain(|_, p| !p.is_dead());
+
+        // Spawn new mob ?
+        if mob_spawn_timer.elapsed().as_secs_f64() > next_mob_spawn_seconds {
+            if mobs.len() < max_mobs {
+                spawn_mob(&mut mobs, mob_spawners.clone(), &players, &world);
+            }
+
+            mob_spawn_timer = Instant::now();
+            next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
+        }
 
         // Add blocks?
         if add_blocks_timer.elapsed().as_secs() > 10 {

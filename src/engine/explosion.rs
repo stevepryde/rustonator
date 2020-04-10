@@ -46,6 +46,10 @@ impl Explosion {
         self.id
     }
 
+    pub fn pid(&self) -> PlayerId {
+        self.pid
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }

@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 pub trait HasId<I: From<u64>> {
     fn set_id(&mut self, id: I);
@@ -24,6 +22,10 @@ impl<I: From<u64> + Debug + Hash + Eq, T: HasId<I>> Default for ItemStore<I, T> 
 impl<I: Clone + From<u64> + Debug + Hash + Eq, T: HasId<I>> ItemStore<I, T> {
     pub fn new() -> Self {
         ItemStore::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
     }
 
     fn get_next_id(&mut self) -> I {
@@ -69,9 +71,7 @@ impl<I: Clone + From<u64> + Debug + Hash + Eq, T: HasId<I>> ItemStore<I, T> {
     }
 
     pub fn retain<F>(&mut self, f: F)
-    where
-        F: FnMut(&I, &mut T) -> bool,
-    {
+    where F: FnMut(&I, &mut T) -> bool {
         self.items.retain(f);
     }
 }

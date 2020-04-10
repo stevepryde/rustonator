@@ -30,11 +30,11 @@ impl Action {
         }
     }
 
-    pub fn get_x(&self) -> i32 {
+    pub fn x(&self) -> i32 {
         Self::clamp(self.x)
     }
 
-    pub fn get_y(&self) -> i32 {
+    pub fn y(&self) -> i32 {
         Self::clamp(self.y)
     }
 
@@ -50,5 +50,10 @@ impl Action {
         self.x = Self::clamp(x);
         self.y = Self::clamp(y);
         self.fire = fire;
+    }
+
+    pub fn setxy(&mut self, x: i32, y: i32) {
+        self.x = Self::clamp(x);
+        self.y = Self::clamp(y);
     }
 }

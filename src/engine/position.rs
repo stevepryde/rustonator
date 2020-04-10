@@ -2,7 +2,7 @@ use crate::engine::world::World;
 use itertools::Chunk;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 
 // Get the difference between two i32 values.
 fn diffu32(a: i32, b: i32) -> i32 {
@@ -128,6 +128,17 @@ impl Add<PositionOffset> for MapPosition {
         MapPosition {
             x: self.x + other.x,
             y: self.y + other.y,
+        }
+    }
+}
+
+impl Sub<MapPosition> for MapPosition {
+    type Output = PositionOffset;
+
+    fn sub(self, rhs: MapPosition) -> Self::Output {
+        PositionOffset {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
         }
     }
 }

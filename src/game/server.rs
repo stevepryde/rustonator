@@ -7,7 +7,7 @@ use crate::{
         player::{Player, PlayerFlags, PlayerId},
         position::{MapPosition, PixelPositionF64, PositionOffset},
         world::World,
-        worlddata::MobSpawner,
+        worlddata::{InternalCellData, MobSpawner},
     },
     error::ZResult,
     tools::itemstore::ItemStore,
@@ -21,7 +21,7 @@ pub type MobList = ItemStore<MobId, Mob>;
 pub type ExplosionList = ItemStore<ExplosionId, Explosion>;
 pub type BombList = ItemStore<BombId, Bomb>;
 
-pub fn game_process_explosions(
+pub fn game_process_explosions_and_bombs(
     delta_time: f64,
     explosions: &mut ExplosionList,
     bombs: &mut BombList,
@@ -159,8 +159,8 @@ pub async fn player_got_item(player: &mut Player, item: CellType) -> ZResult<boo
 pub fn spawn_mob(
     mobs: &mut MobList,
     mut spawners: Vec<MobSpawner>,
-    world: &World,
     players: &PlayerList,
+    world: &World,
 )
 {
     let mob_positions: Vec<MapPosition> = mobs
@@ -178,6 +178,41 @@ pub fn spawn_mob(
             mob.choose_new_target(world, players);
             mobs.add(mob);
             break;
+        }
+    }
+}
+
+pub fn game_process_mobs(
+    delta_time: f64,
+    mobs: &mut MobList,
+    players: &mut PlayerList,
+    explosions: &ExplosionList,
+    world: &World,
+)
+{
+    for mob in mobs.iter_mut() {
+        mob.update(delta_time, &players, &world);
+
+        // Check if mob is dead.
+        if let Some(InternalCellData::Explosion(explosion_id)) =
+            world.get_internal_cell(mob.position().to_map_position(&world))
+        {
+            if let Some(explosion) = explosions.get(*explosion_id) {
+                if explosion.is_active() {
+                    mob.terminate();
+
+                    // Award points to the player that killed this mob.
+                    if let Some(p) = players.get_mut(&explosion.pid()) {
+                        if !p.is_dead() {
+                            if mob.is_smart() {
+                                p.increase_score(2000);
+                            } else {
+                                p.increase_score(500);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -111,6 +111,14 @@ impl World {
         &self.data
     }
 
+    pub fn zones(&self) -> &WorldZoneData {
+        &self.zones
+    }
+
+    pub fn zones_mut(&mut self) -> &mut WorldZoneData {
+        &mut self.zones
+    }
+
     fn get_index(&self, pos: MapPosition) -> usize {
         ((pos.y * self.sizes.map_size.width) + pos.x) as usize
     }
@@ -177,6 +185,10 @@ impl World {
         }
 
         MapPosition::new(1, 1)
+    }
+
+    pub fn get_internal_cell(&self, pos: MapPosition) -> Option<&InternalCellData> {
+        self.data_internal.get_at(pos)
     }
 
     pub fn clear_internal_cell(&mut self, pos: MapPosition) {
@@ -522,13 +534,25 @@ impl World {
 pub struct PathFindData {
     position: MapPosition,
     travelled: u32,
+    initial_offset: Option<PositionOffset>,
 }
 
 impl PathFindData {
-    pub fn new(position: MapPosition, prev: Option<&PathFindData>) -> Self {
+    pub fn new(position: MapPosition) -> Self {
         Self {
             position,
-            travelled: prev.map(|pf| pf.travelled + 1).unwrap_or(0),
+            travelled: 0,
+            initial_offset: None,
+        }
+    }
+
+    pub fn new_from(position: MapPosition, prev: &PathFindData) -> Self {
+        Self {
+            position,
+            travelled: prev.travelled + 1,
+            initial_offset: prev
+                .initial_offset
+                .or_else(|| Some(position - prev.position)),
         }
     }
 }
@@ -552,18 +576,64 @@ impl World {
 
             if let Some(cell_type) = self.get_cell(m) {
                 if agent.can_pass(cell_type) {
-                    possible_moves.push(PathFindData::new(m, Some(pf)));
+                    possible_moves.push(PathFindData::new_from(m, pf));
                 }
             }
         }
         possible_moves
     }
 
+    pub fn path_find<T>(
+        &self,
+        agent: &T,
+        pos_from: MapPosition,
+        pos_to: MapPosition,
+        range: u32,
+    ) -> Option<PositionOffset>
+    where
+        T: CanPass,
+    {
+        if pos_to == pos_from {
+            return None;
+        }
+
+        let mut open_list: Vec<PathFindData> = Vec::with_capacity(4);
+        open_list.push(PathFindData::new(pos_from));
+
+        let mut seen: HashSet<MapPosition> = HashSet::new();
+        seen.insert(pos_from);
+
+        while !open_list.is_empty() {
+            open_list.sort_by_cached_key(|a| a.travelled + a.position.distance_to(pos_to));
+            let mut processed = 0;
+            for element in &open_list {
+                if element.position == pos_to {
+                    return element.initial_offset;
+                }
+                seen.insert(element.position);
+                processed += 1;
+                if element.travelled < range {
+                    let mut new_moves = self.get_possible_moves(agent, element, &seen);
+                    if !new_moves.is_empty() {
+                        open_list.append(&mut new_moves);
+                        // Since we've added new elements, sort the list before going further.
+                        break;
+                    }
+                }
+            }
+
+            // Remove processed items.
+            open_list = open_list.split_off(processed);
+        }
+
+        None
+    }
+
     pub fn path_find_nearest_safe_space<T>(
         &self,
+        agent: &T,
         pos: MapPosition,
         range: u32,
-        agent: &T,
     ) -> MapPosition
     where
         T: CanPass,
@@ -573,7 +643,7 @@ impl World {
         }
 
         let mut open_list: Vec<PathFindData> = Vec::with_capacity(4);
-        open_list.push(PathFindData::new(pos, None));
+        open_list.push(PathFindData::new(pos));
 
         let mut seen: HashSet<MapPosition> = HashSet::new();
         seen.insert(pos);
@@ -610,9 +680,6 @@ impl World {
                     }
                 }
             }
-
-            // Remove processed items.
-            open_list = open_list.split_off(processed);
         }
         safest_pos
     }

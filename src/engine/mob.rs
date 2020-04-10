@@ -2,7 +2,7 @@ use crate::{
     component::action::Action,
     engine::{
         player::PlayerId,
-        position::{MapPosition, PixelPositionF64},
+        position::{MapPosition, PixelPositionF64, PositionOffset},
         world::World,
     },
     game::server::PlayerList,
@@ -14,6 +14,7 @@ use crate::{
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+use std::ops::{Add, AddAssign};
 
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
@@ -53,6 +54,12 @@ impl RandEnumFrom<u8> for MobTargetMode {
     fn get_enum_values() -> Vec<u8> {
         (0..7).collect()
     }
+}
+
+#[derive(Debug, Clone)]
+enum DirAction {
+    Clockwise,
+    Anticlockwise,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +104,26 @@ impl MobTargetDir {
             MobTargetDir::Right => MobTargetDir::Up,
             MobTargetDir::Down => MobTargetDir::Right,
             MobTargetDir::Left => MobTargetDir::Down,
+        }
+    }
+
+    fn get_offset(self) -> PositionOffset {
+        match self {
+            MobTargetDir::Up => PositionOffset::new(0, -1),
+            MobTargetDir::Right => PositionOffset::new(1, 0),
+            MobTargetDir::Down => PositionOffset::new(0, 1),
+            MobTargetDir::Left => PositionOffset::new(-1, 0),
+        }
+    }
+}
+
+impl Add<DirAction> for MobTargetDir {
+    type Output = MobTargetDir;
+
+    fn add(self, rhs: DirAction) -> Self::Output {
+        match rhs {
+            DirAction::Clockwise => self.right(),
+            DirAction::Anticlockwise => self.left(),
         }
     }
 }
@@ -173,12 +200,24 @@ impl Mob {
         Mob::default()
     }
 
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    pub fn terminate(&mut self) {
+        self.active = false;
+    }
+
     pub fn position(&self) -> PixelPositionF64 {
         self.position
     }
 
     pub fn set_position(&mut self, pos: PixelPositionF64) {
         self.position = pos;
+    }
+
+    pub fn is_smart(&self) -> bool {
+        self.server_data.smart
     }
 
     pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f64) {
@@ -193,17 +232,8 @@ impl Mob {
         } else {
             self.speed
         };
-        self.position.x += tmp_action.get_x() as f64 * delta_time * effective_speed;
-        self.position.y += tmp_action.get_y() as f64 * delta_time * effective_speed;
-    }
-
-    fn get_delta_for_dir(dir: MobTargetDir) -> (i32, i32) {
-        match dir {
-            MobTargetDir::Up => (0, -1),
-            MobTargetDir::Right => (1, 0),
-            MobTargetDir::Down => (0, 1),
-            MobTargetDir::Left => (-1, 0),
-        }
+        self.position.x += tmp_action.x() as f64 * delta_time * effective_speed;
+        self.position.y += tmp_action.y() as f64 * delta_time * effective_speed;
     }
 
     pub fn choose_new_target(&mut self, world: &World, players: &PlayerList) {
@@ -249,7 +279,7 @@ impl Mob {
             MobTargetMode::DangerAvoidance => {
                 self.server_data.target_remaining = 99999.0;
                 let safest =
-                    world.path_find_nearest_safe_space(map_pos, self.server_data.range, self);
+                    world.path_find_nearest_safe_space(self, map_pos, self.server_data.range);
                 self.server_data.target_position = safest;
                 has_target = true;
             }
@@ -260,6 +290,217 @@ impl Mob {
             self.server_data.old_position = map_pos;
             self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
         }
+    }
+
+    fn update_action(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
+        let map_pos = self.position().to_map_position(world);
+        self.action.clear();
+
+        let mut new_target = false;
+        let mut dir_action: Option<DirAction> = None;
+        let mut opportunistic = false;
+        match self.server_data.target_mode {
+            MobTargetMode::NearbyCell => {
+                if map_pos == self.server_data.target_position {
+                    // We've arrived. Choose a new one.
+                    new_target = true;
+                } else {
+                    match world.path_find(
+                        self,
+                        map_pos,
+                        self.server_data.target_position,
+                        self.server_data.range * 2,
+                    ) {
+                        Some(best) => {
+                            self.action.set(best.x, best.y, false);
+                        }
+                        None => {
+                            new_target = true;
+                        }
+                    }
+                }
+            }
+            MobTargetMode::NearbyPlayer => {
+                if let Some(p) = players.get(&self.server_data.target_player) {
+                    if p.is_dead() {
+                        new_target = true;
+                    } else {
+                        match world.path_find(
+                            self,
+                            map_pos,
+                            p.position().to_map_position(world),
+                            self.server_data.range * 2,
+                        ) {
+                            Some(best) => {
+                                self.action.set(best.x, best.y, false);
+                            }
+                            None => {
+                                new_target = true;
+                            }
+                        }
+                    }
+                }
+            }
+            MobTargetMode::Clockwise => {
+                dir_action = Some(DirAction::Clockwise);
+            }
+            MobTargetMode::Anticlockwise => {
+                dir_action = Some(DirAction::Anticlockwise);
+            }
+            MobTargetMode::ClockwiseNext => {
+                dir_action = Some(DirAction::Clockwise);
+                opportunistic = true;
+            }
+            MobTargetMode::AnticlockwiseNext => {
+                dir_action = Some(DirAction::Anticlockwise);
+                opportunistic = true;
+            }
+            MobTargetMode::DangerAvoidance => {
+                if let Some(ts) = world.get_mob_data(self.server_data.target_position) {
+                    // Still not safe, get new target.
+                    let safest =
+                        world.path_find_nearest_safe_space(self, map_pos, self.server_data.range);
+                    self.server_data.target_position = safest;
+                }
+
+                // Go.
+                match world.path_find(
+                    self,
+                    map_pos,
+                    self.server_data.target_position,
+                    self.server_data.range * 2,
+                ) {
+                    Some(best) => {
+                        self.action.set(best.x, best.y, false);
+                    }
+                    None => {
+                        // We have no other option. Freeze :(
+                    }
+                }
+            }
+        }
+
+        if let Some(da) = dir_action {
+            let mut done = false;
+            if opportunistic && map_pos != self.server_data.old_position {
+                let new_dir = self.server_data.target_dir.clone() + da.clone();
+                let offset = new_dir.get_offset();
+                if self.can_pass_position(map_pos + offset, world) {
+                    self.server_data.target_dir = new_dir;
+                    self.server_data.old_position = map_pos;
+                    self.action.set(offset.x, offset.y, false);
+                    done = true;
+                }
+            }
+
+            if !done {
+                let offset = self.server_data.target_dir.get_offset();
+                if self.can_pass_position(map_pos + offset, world) {
+                    self.action.set(offset.x, offset.y, false);
+                } else {
+                    // There is a block here but we cannot pass.
+                    self.server_data.target_dir = self.server_data.target_dir.clone() + da;
+                }
+            }
+        }
+
+        self.server_data.target_remaining -= delta_time;
+        if self.server_data.target_remaining <= 0.0 {
+            new_target = true;
+        }
+
+        // This isn't as stupid as it looks. new_target could be set back at the top of
+        // this method as well.
+        if new_target {
+            self.choose_new_target(world, players);
+        }
+    }
+
+    fn danger_enable(&mut self, world: &World, players: &PlayerList) {
+        self.server_data.danger = true;
+        match self.server_data.target_mode {
+            MobTargetMode::DangerAvoidance => {}
+            _ => self.choose_new_target(world, players),
+        }
+    }
+
+    fn danger_disable(&mut self, world: &World, players: &PlayerList) {
+        self.server_data.danger = false;
+        if let MobTargetMode::DangerAvoidance = self.server_data.target_mode {
+            self.choose_new_target(world, players);
+        }
+    }
+
+    pub fn update(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
+        if !self.is_active() {
+            return;
+        }
+
+        let map_pos = self.position().to_map_position(world);
+        if let Some(CellType::Wall) = world.get_cell(map_pos) {
+            // Oops - we're in a wall. Reposition to nearby blank space.
+            let blank = world.find_nearest_blank(map_pos);
+            self.set_position(PixelPositionF64::from_map_position(blank, world));
+        }
+
+        // If we're in danger, do something about it.
+        match self.server_data.danger {
+            true => {
+                // We were in danger. Are we still in danger ?
+                if world.get_mob_data(map_pos).is_none() {
+                    self.danger_disable(world, players);
+                }
+            }
+            false => {
+                // We haven't been in danger but are we in danger now?
+                if self.server_data.smart && world.get_mob_data(map_pos).is_some() {
+                    self.danger_enable(world, players);
+                }
+            }
+        }
+
+        self.update_action(delta_time, players, world);
+        let mut tmp_action = self.action.clone();
+        // Try X movement.
+        let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+        if !self.can_pass_position(try_pos, world) {
+            // Can't pass horizontally, so lock X position.
+            self.position.x = PixelPositionF64::from_map_position(try_pos, world).x;
+        }
+        // Try Y movement.
+        let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+        if !self.can_pass_position(try_pos, world) {
+            // Can't pass vertically, so lock Y position.
+            self.position.y = PixelPositionF64::from_map_position(try_pos, world).y;
+        }
+
+        // Lock to gridlines.
+        let tolerance = self.speed * delta_time;
+        if tmp_action.x() != 0 {
+            // Moving horizontally, make sure we're on a gridline.
+            let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
+            if target_y > self.position.y + tolerance {
+                tmp_action.setxy(0, 1);
+            } else if target_y < self.position.y - tolerance {
+                tmp_action.setxy(0, -1);
+            } else {
+                self.position.y = target_y;
+                tmp_action.setxy(tmp_action.x(), 0);
+            }
+        } else if tmp_action.y() != 0 {
+            // Moving vertically, make sure we're on a gridline.
+            let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
+            if target_x > self.position.x + tolerance {
+                tmp_action.setxy(1, 0);
+            } else if target_x < self.position.x - tolerance {
+                tmp_action.setxy(-1, 0);
+            } else {
+                self.position.x = target_x;
+                tmp_action.setxy(0, tmp_action.y());
+            }
+        }
+
+        self.update_with_temp_action(tmp_action, delta_time);
     }
 }
 
