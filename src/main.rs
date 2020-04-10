@@ -9,6 +9,7 @@ pub mod engine {
     pub mod mob;
     pub mod player;
     pub mod position;
+    pub mod types;
     pub mod world;
     pub mod worlddata;
     pub mod worldzone;
@@ -32,13 +33,12 @@ pub mod comms {
 pub mod error;
 pub mod game {
     pub mod maingame;
-    pub mod server;
 }
 
 use crate::comms::websocket::spawn_websocket_server;
 use tokio::sync::mpsc::channel;
 
-use crate::game::maingame::game_loop;
+use crate::game::maingame::RustonatorGame;
 use fern;
 
 #[tokio::main]
@@ -52,7 +52,8 @@ async fn main() {
             eprintln!("Websocket error: {:?}", e);
         }
     });
-    if let Err(e) = game_loop(player_join_rx).await {
+    let mut game = RustonatorGame::new(50, 50);
+    if let Err(e) = game.game_loop(player_join_rx).await {
         eprintln!("Error: {:?}", e);
     }
 }

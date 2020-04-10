@@ -3,9 +3,9 @@ use crate::{
     engine::{
         player::PlayerId,
         position::{MapPosition, PixelPositionF64, PositionOffset},
+        types::PlayerList,
         world::World,
     },
-    game::server::PlayerList,
     tools::itemstore::HasId,
     traits::{
         celltypes::{CanPass, CellType},
@@ -14,7 +14,7 @@ use crate::{
 };
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign};
+use std::ops::Add;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
@@ -107,7 +107,7 @@ impl MobTargetDir {
         }
     }
 
-    fn get_offset(self) -> PositionOffset {
+    fn get_offset(&self) -> PositionOffset {
         match self {
             MobTargetDir::Up => PositionOffset::new(0, -1),
             MobTargetDir::Right => PositionOffset::new(1, 0),
@@ -356,7 +356,10 @@ impl Mob {
                 opportunistic = true;
             }
             MobTargetMode::DangerAvoidance => {
-                if let Some(ts) = world.get_mob_data(self.server_data.target_position) {
+                if world
+                    .get_mob_data(self.server_data.target_position)
+                    .is_some()
+                {
                     // Still not safe, get new target.
                     let safest =
                         world.path_find_nearest_safe_space(self, map_pos, self.server_data.range);
@@ -364,18 +367,13 @@ impl Mob {
                 }
 
                 // Go.
-                match world.path_find(
+                if let Some(best) = world.path_find(
                     self,
                     map_pos,
                     self.server_data.target_position,
                     self.server_data.range * 2,
                 ) {
-                    Some(best) => {
-                        self.action.set(best.x, best.y, false);
-                    }
-                    None => {
-                        // We have no other option. Freeze :(
-                    }
+                    self.action.set(best.x, best.y, false);
                 }
             }
         }
@@ -444,18 +442,15 @@ impl Mob {
         }
 
         // If we're in danger, do something about it.
-        match self.server_data.danger {
-            true => {
-                // We were in danger. Are we still in danger ?
-                if world.get_mob_data(map_pos).is_none() {
-                    self.danger_disable(world, players);
-                }
+        if self.server_data.danger {
+            // We were in danger. Are we still in danger ?
+            if world.get_mob_data(map_pos).is_none() {
+                self.danger_disable(world, players);
             }
-            false => {
-                // We haven't been in danger but are we in danger now?
-                if self.server_data.smart && world.get_mob_data(map_pos).is_some() {
-                    self.danger_enable(world, players);
-                }
+        } else {
+            // We haven't been in danger but are we in danger now?
+            if self.server_data.smart && world.get_mob_data(map_pos).is_some() {
+                self.danger_enable(world, players);
             }
         }
 

@@ -1,5 +1,4 @@
 use crate::engine::world::World;
-use itertools::Chunk;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
 use std::ops::{Add, Mul, Sub};

@@ -3,7 +3,8 @@ use crate::{
         bomb::{Bomb, BombId},
         config::GameConfig,
         explosion::Explosion,
-        position::{MapPosition, PixelPositionF64, PositionOffset, SizeInPixels, SizeInTiles},
+        position::{MapPosition, PositionOffset, SizeInPixels, SizeInTiles},
+        types::{BombList, ExplosionList, PlayerList},
         worlddata::{
             InternalCellData,
             InternalMobData,
@@ -12,9 +13,8 @@ use crate::{
             WorldChunk,
             WorldData,
         },
-        worldzone::{WorldZone, WorldZoneData},
+        worldzone::WorldZoneData,
     },
-    game::server::{BombList, ExplosionList, PlayerList},
     traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
@@ -569,14 +569,14 @@ impl World {
     {
         let pos = pf.position;
         let mut possible_moves = Vec::new();
-        for m in vec![pos.up(1), pos.right(1), pos.down(1), pos.left(1)] {
+        for m in &[pos.up(1), pos.right(1), pos.down(1), pos.left(1)] {
             if seen.contains(&m) {
                 continue;
             }
 
-            if let Some(cell_type) = self.get_cell(m) {
+            if let Some(cell_type) = self.get_cell(*m) {
                 if agent.can_pass(cell_type) {
-                    possible_moves.push(PathFindData::new_from(m, pf));
+                    possible_moves.push(PathFindData::new_from(*m, pf));
                 }
             }
         }
@@ -680,6 +680,9 @@ impl World {
                     }
                 }
             }
+
+            // Remove processed items.
+            open_list = open_list.split_off(processed);
         }
         safest_pos
     }

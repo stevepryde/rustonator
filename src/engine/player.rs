@@ -23,7 +23,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::convert::TryFrom;
-use tokio::time::Instant;
 
 bitflags! {
     #[derive(Default, Serialize, Deserialize)]
@@ -368,10 +367,10 @@ impl Player {
                 self.set_position(PixelPositionF64::from_map_position(spawn_point, &world));
 
                 let available_images = vec!["p1", "p2", "p3", "p4"];
-                self.image = available_images
+                self.image = (*available_images
                     .choose(&mut rand::thread_rng())
-                    .unwrap_or(&"p1")
-                    .to_string();
+                    .unwrap_or(&"p1"))
+                .to_string();
 
                 // Serialize here to avoid cloning both structures only to serialize later.
                 self.ws
@@ -390,6 +389,93 @@ impl Player {
                 self.terminate();
                 Ok(false)
             }
+        }
+    }
+
+    pub async fn got_item(&mut self, item: CellType) -> ZResult<bool> {
+        match item {
+            CellType::ItemBomb => {
+                self.increase_max_bombs();
+                self.ws().send_powerup("+B").await?;
+                Ok(true)
+            }
+            CellType::ItemRange => {
+                self.increase_range();
+                self.ws().send_powerup("+R").await?;
+                Ok(true)
+            }
+            CellType::ItemRandom => {
+                let r: u8 = rand::thread_rng().gen_range(0, 10);
+                let mut powerup_name = String::new();
+                match r {
+                    0 => {
+                        if self.max_bombs() < 6 {
+                            self.increase_max_bombs();
+                            powerup_name = "+B".to_owned();
+                        }
+                    }
+                    1 => {
+                        if self.max_bombs() > 1 {
+                            self.decrease_max_bombs();
+                            powerup_name = "-B".to_owned();
+                        }
+                    }
+                    2 => {
+                        if self.range() < BombRange::from(8) {
+                            self.increase_range();
+                            powerup_name = "+R".to_owned();
+                        }
+                    }
+                    3 => {
+                        if self.range() > BombRange::from(1) {
+                            self.decrease_range();
+                            powerup_name = "-R".to_owned();
+                        }
+                    }
+                    4 => {
+                        if self.has_flag(PlayerFlags::WALK_THROUGH_BOMBS) {
+                            self.del_flag(PlayerFlags::WALK_THROUGH_BOMBS);
+                            powerup_name = "-TB".to_owned();
+                        } else {
+                            self.add_flag(PlayerFlags::WALK_THROUGH_BOMBS);
+                            powerup_name = "+TB".to_owned();
+                        }
+                    }
+                    5 => {
+                        if self.bomb_time() < BombTime::from(4.0) {
+                            self.increase_bomb_time();
+                            powerup_name = "SB".to_owned();
+                        }
+                    }
+                    6 => {
+                        if self.bomb_time() > BombTime::from(2.0) {
+                            self.decrease_bomb_time();
+                            powerup_name = "FB".to_owned();
+                        }
+                    }
+                    7 => {
+                        if self.score() > 100 {
+                            let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                            self.decrease_score(pwrup);
+                            powerup_name = "-$".to_owned();
+                        }
+                    }
+                    8 => {
+                        let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                        self.increase_score(pwrup);
+                        powerup_name = "+$".to_owned();
+                    }
+                    _ => powerup_name = self.add_random_effect(),
+                }
+
+                if powerup_name.is_empty() {
+                    powerup_name = self.add_random_effect();
+                }
+
+                self.ws().send_powerup(&powerup_name).await?;
+                Ok(true)
+            }
+            _ => Ok(false),
         }
     }
 }
