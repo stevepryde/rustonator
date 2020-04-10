@@ -38,6 +38,14 @@ impl Action {
         Self::clamp(self.y)
     }
 
+    pub fn fire(&self) -> bool {
+        self.fire
+    }
+
+    pub fn cease_fire(&mut self) {
+        self.fire = false;
+    }
+
     pub fn clear(&mut self) {
         self.x = 0;
         self.y = 0;

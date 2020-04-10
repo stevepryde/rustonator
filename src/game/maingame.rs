@@ -1,17 +1,18 @@
 use crate::{
-    comms::playercomm::PlayerConnectEvent,
+    comms::playercomm::{PlayerConnectEvent, PlayerMessage},
     engine::{
         bomb::Bomb,
         config::GameConfig,
+        explosion::Explosion,
         mob::Mob,
-        player::Player,
-        position::{MapPosition, PixelPositionF64},
+        player::{Player, PlayerFlags, PlayerId, SerPlayer},
+        position::{MapPosition, PixelPositionF64, PositionOffset},
         types::{BombList, ExplosionList, MobList, PlayerList},
         world::World,
         worlddata::{InternalCellData, MobSpawner},
     },
     error::ZResult,
-    traits::celltypes::CellType,
+    traits::celltypes::{CanPass, CellType},
 };
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -87,24 +88,7 @@ impl RustonatorGame {
             self.process_player_inputs().await;
             self.game_process_explosions_and_bombs(delta_time);
             self.game_process_mobs(delta_time);
-
-            // Remove dead mobs.
-            self.mobs.retain(|_, m| m.is_active());
-
-            // self.game_process_players(delta_time, &mut players)
-
-            // Update players.
-            self.world.zones_mut().clear_players();
-            for p in self.players.values_mut() {
-                if p.is_dead() {
-                    continue;
-                }
-
-                p.update(delta_time);
-            }
-
-            // Remove dead players.
-            self.players.retain(|_, p| !p.is_dead());
+            self.game_process_players(delta_time).await;
 
             // Spawn new mob ?
             if mob_spawn_timer.elapsed().as_secs_f64() > next_mob_spawn_seconds {
@@ -247,7 +231,7 @@ impl RustonatorGame {
                 .get_internal_cell(mob.position().to_map_position(&self.world))
             {
                 if let Some(explosion) = self.explosions.get(*explosion_id) {
-                    if explosion.is_active() {
+                    if explosion.is_harmful() {
                         mob.terminate();
 
                         // Award points to the player that killed this mob.
@@ -264,5 +248,219 @@ impl RustonatorGame {
                 }
             }
         }
+
+        // Remove dead mobs.
+        self.mobs.retain(|_, m| m.is_active());
+    }
+
+    pub async fn game_process_players(&mut self, delta_time: f64) {
+        // Update players.
+        self.world.zones_mut().clear_players();
+        let player_ids: Vec<PlayerId> = self.players.keys().copied().collect();
+        for pid in player_ids {
+            // This is why people move to an ECS :(
+            // Rust needs to remove the player from the list while processing it.
+            let mut player = match self.players.remove(&pid) {
+                Some(p) => p,
+                None => {
+                    continue;
+                }
+            };
+
+            if player.is_dead() {
+                // No need to reinsert.
+                continue;
+            }
+
+            if player.action().fire() {
+                self.create_bomb_for_player(&mut player);
+
+                // Prevent more bombs until the player releases fire.
+                player.action_mut().cease_fire();
+            }
+
+            player.update(&self.world, delta_time);
+            match self.process_player_move(&mut player).await {
+                Ok(_) => {
+                    // Reinsert player.
+                    self.players.insert(player.id(), player);
+                }
+                Err(e) => {
+                    error!(
+                        "Error processing move for player: {:?} ({}): {:?}",
+                        player.id(),
+                        player.name(),
+                        e
+                    );
+                    player.terminate();
+                }
+            }
+        }
+
+        // Remove dead players.
+        self.players.retain(|_, p| !p.is_dead());
+    }
+
+    async fn process_player_move(&mut self, player: &mut Player) -> ZResult<()> {
+        let mut reason = String::new();
+        let mut died = false;
+
+        // Did we collect anything?
+        let map_pos = player.position().to_map_position(&self.world);
+        match self.world.get_cell(map_pos) {
+            Some(CellType::Empty) | None => {}
+            Some(CellType::MobSpawner) => {
+                // You ded.
+                died = true;
+                reason = String::from("You touched a robot spawner");
+
+                // Create explosion but don't add it to the world. It is for display only.
+                let explosion = Explosion::new(None, map_pos);
+                self.explosions.add(explosion);
+            }
+            Some(ct) => {
+                if player.got_item(ct).await? {
+                    self.world.set_cell(map_pos, CellType::Empty);
+                }
+            }
+        }
+
+        // Did we touch something we shouldn't have?
+        if !player.has_flag(PlayerFlags::INVINCIBLE) {
+            // Mob?
+            let range = self.world.sizes().tile_size().width as f64 / 2.0;
+            for mob in self.mobs.iter() {
+                if player.position().distance_to(mob.position()) <= range {
+                    // You ded.
+                    died = true;
+                    reason = if mob.is_smart() {
+                        String::from("You were killed by a robot overlord")
+                    } else {
+                        String::from("You were killed by a robot")
+                    };
+
+                    // Create explosion but don't add it to the world. It is for display only.
+                    let explosion = Explosion::new(None, map_pos);
+                    self.explosions.add(explosion);
+                }
+            }
+
+            // Explosion?
+            if let Some(InternalCellData::Explosion(explosion_id)) =
+                self.world.get_internal_cell(map_pos)
+            {
+                if let Some(explosion) = self.explosions.get(*explosion_id) {
+                    if explosion.is_harmful() {
+                        died = true;
+
+                        // Award points to the player that killed this mob.
+                        if explosion.pid() == player.id() {
+                            reason = String::from("Oops! You were killed by your own bomb");
+                        } else if let Some(p) = self.players.get_mut(&explosion.pid()) {
+                            if !p.is_dead() {
+                                reason = format!("You were killed by '{}'", p.name());
+                                p.increase_score(1000);
+                            } else {
+                                let pname = explosion.pname();
+                                let pname_str = if pname.is_empty() {
+                                    String::from("an unknown player")
+                                } else {
+                                    format!("'{}'", pname)
+                                };
+
+                                reason = format!(
+                                    "You were killed by {}, who has already died since placing \
+                                     that bomb",
+                                    pname_str
+                                );
+                            }
+                        } else {
+                            reason = String::from(
+                                "Hmm...you died from an explosion but we don't know whose it was",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if died {
+            debug!(
+                "Player {:?} ({}, score {}) killed: {}",
+                player.id(),
+                player.name(),
+                player.score(),
+                reason
+            );
+            player.terminate();
+            player.ws().send(PlayerMessage::Dead(reason)).await?;
+        } else {
+            // Send frame update.
+            self.send_data_to_player(player).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn send_data_to_player(&self, player: &mut Player) -> ZResult<()> {
+        let map_pos = player.position().to_map_position(&self.world);
+        let chunkwidth = self.world.sizes().chunk_size().width;
+        let chunkheight = self.world.sizes().chunk_size().height;
+        let local_players: Vec<&Player> = self
+            .players
+            .values()
+            .filter(|p| {
+                p.position().to_map_position(&self.world).is_within_grid(
+                    map_pos,
+                    chunkwidth,
+                    chunkheight,
+                )
+            })
+            .collect();
+
+        let local_mobs: Vec<&Mob> = self
+            .mobs
+            .iter()
+            .filter(|m| {
+                m.position().to_map_position(&self.world).is_within_grid(
+                    map_pos,
+                    chunkwidth,
+                    chunkheight,
+                )
+            })
+            .collect();
+
+        let local_bombs: Vec<&Bomb> = self
+            .bombs
+            .iter()
+            .filter(|b| {
+                b.position()
+                    .is_within_grid(map_pos, chunkwidth, chunkheight)
+            })
+            .collect();
+
+        let local_explosions: Vec<&Explosion> = self
+            .explosions
+            .iter()
+            .filter(|e| {
+                e.position()
+                    .is_within_grid(map_pos, chunkwidth, chunkheight)
+            })
+            .collect();
+
+        let ser_data = serde_json::json!({
+            "players": local_players,
+            "mobs": local_mobs,
+            "bombs": local_bombs,
+            "explosions": local_explosions
+        });
+
+        // TODO: get chunk data as well...
+        // Send everthing to send_frame() and serialize it there.
+        player
+            .ws()
+            .send(PlayerMessage::FrameData(player.ser()?, ser_data));
+
+        Ok(())
     }
 }

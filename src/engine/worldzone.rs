@@ -70,7 +70,8 @@ impl WorldZoneData {
         width_in_tiles: i32,
         height_in_tiles: i32,
         quota_factor: f64,
-    ) -> Self {
+    ) -> Self
+    {
         let mut zones_across = (width_in_tiles as f64 / zone_width as f64) as usize;
         let mut last_width = zone_width;
         let remainder_width = width_in_tiles as usize % zones_across;
@@ -135,8 +136,9 @@ impl WorldZoneData {
     pub fn del_block_at_map_xy(&mut self, pos: MapPosition) {
         let zone_index = self.map_to_zone_index(pos);
 
-        // TODO: beware wrapping errors?
-        self.zones[zone_index.0].num_blocks -= 1;
+        if self.zones[zone_index.0].num_blocks > 0 {
+            self.zones[zone_index.0].num_blocks -= 1;
+        }
     }
 
     pub fn add_player_at_map_xy(&mut self, pos: MapPosition) {

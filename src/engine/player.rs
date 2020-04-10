@@ -6,7 +6,7 @@ use crate::{
     },
     engine::{
         bomb::{BombRange, BombTime},
-        position::PixelPositionF64,
+        position::{PixelPositionF64, PositionOffset},
         world::World,
     },
     error::{ZError, ZResult},
@@ -152,6 +152,30 @@ impl Player {
         self.position
     }
 
+    pub fn position_mut(&mut self) -> &mut PixelPositionF64 {
+        &mut self.position
+    }
+
+    pub fn set_position(&mut self, pos: PixelPositionF64) {
+        self.position = pos;
+    }
+
+    pub fn action(&self) -> &Action {
+        &self.action
+    }
+
+    pub fn action_mut(&mut self) -> &mut Action {
+        &mut self.action
+    }
+
+    fn set_action(&mut self, action: Action) {
+        self.action = action;
+    }
+
+    pub fn speed(&self) -> f64 {
+        self.speed
+    }
+
     pub fn score(&self) -> u32 {
         self.score
     }
@@ -232,16 +256,11 @@ impl Player {
         &mut self.ws
     }
 
-    pub fn update(&mut self, delta_time: f64) {
-        let action = self.action.clone();
-        self.update_with_temp_action(&action, delta_time);
-    }
-
     pub fn terminate(&mut self) {
         self.state = PlayerState::Dead;
     }
 
-    fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
+    pub fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
         std::mem::swap(&mut self.effects, &mut self.effects_cache);
         self.effects.clear();
         while !self.effects_cache.is_empty() {
@@ -307,14 +326,6 @@ impl Player {
 
     pub fn has_flag(&self, flag: PlayerFlags) -> bool {
         self.flags.contains(flag)
-    }
-
-    fn set_position(&mut self, pos: PixelPositionF64) {
-        self.position = pos;
-    }
-
-    fn set_action(&mut self, action: Action) {
-        self.action = action;
     }
 
     pub fn add_random_effect(&mut self) -> String {
@@ -477,6 +488,57 @@ impl Player {
             }
             _ => Ok(false),
         }
+    }
+
+    pub fn update(&mut self, world: &World, delta_time: f64) {
+        let map_pos = self.position().to_map_position(&world);
+        if let Some(CellType::Wall) = world.get_cell(map_pos) {
+            // Oops - we're in a wall. Reposition to nearby blank space.
+            let blank = world.find_nearest_blank(map_pos);
+            self.set_position(PixelPositionF64::from_map_position(blank, &world));
+        }
+
+        let mut tmp_action = self.action().clone();
+        // Try X movement.
+        let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+        if !self.can_pass_position(try_pos, &world) {
+            // Can't pass horizontally, so lock X position.
+            self.position_mut().x = PixelPositionF64::from_map_position(try_pos, &world).x;
+        }
+        // Try Y movement.
+        let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+        if !self.can_pass_position(try_pos, &world) {
+            // Can't pass vertically, so lock Y position.
+            self.position_mut().y = PixelPositionF64::from_map_position(try_pos, &world).y;
+        }
+
+        // Lock to gridlines.
+        let tolerance = self.speed() * delta_time;
+        if tmp_action.x() != 0 {
+            // Moving horizontally, make sure we're on a gridline.
+            let target_y = PixelPositionF64::from_map_position(map_pos, &world).y;
+            if target_y > self.position().y + tolerance {
+                tmp_action.setxy(0, 1);
+            } else if target_y < self.position().y - tolerance {
+                tmp_action.setxy(0, -1);
+            } else {
+                self.position().y = target_y;
+                tmp_action.setxy(tmp_action.x(), 0);
+            }
+        } else if tmp_action.y() != 0 {
+            // Moving vertically, make sure we're on a gridline.
+            let target_x = PixelPositionF64::from_map_position(map_pos, &world).x;
+            if target_x > self.position().x + tolerance {
+                tmp_action.setxy(1, 0);
+            } else if target_x < self.position().x - tolerance {
+                tmp_action.setxy(-1, 0);
+            } else {
+                self.position().x = target_x;
+                tmp_action.setxy(0, tmp_action.y());
+            }
+        }
+
+        self.update_with_temp_action(&tmp_action, delta_time);
     }
 }
 

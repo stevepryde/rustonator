@@ -35,6 +35,8 @@ pub enum PlayerMessage {
     Action(Action),
     SpawnPlayer(SerPlayer, SerWorldData),
     PowerUp(String),
+    FrameData(SerPlayer, SerWorldData),
+    Dead(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

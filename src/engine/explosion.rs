@@ -37,7 +37,7 @@ impl Explosion {
             active: true,
             position,
             remaining: 0.5,
-            harmful: true,
+            harmful: bomb.is_some(),
             timestamp: Timestamp::new(),
         }
     }
@@ -50,8 +50,16 @@ impl Explosion {
         self.pid
     }
 
+    pub fn pname(&self) -> &String {
+        &self.pname
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
+    }
+
+    pub fn is_harmful(&self) -> bool {
+        self.harmful
     }
 
     pub fn position(&self) -> MapPosition {

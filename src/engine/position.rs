@@ -79,6 +79,10 @@ impl MapPosition {
         diffu32(pos.x, self.x) < range && diffu32(pos.y, self.y) < range
     }
 
+    pub fn is_within_grid(self, pos: MapPosition, xrange: i32, yrange: i32) -> bool {
+        (pos.x - self.x).abs() < xrange && (pos.y - self.y).abs() < yrange
+    }
+
     pub fn is_top_left(self) -> bool {
         self.x == 1 && self.y == 1
     }
@@ -174,6 +178,12 @@ where T: From<f64> + Into<f64> + Copy
         let pos = PixelPosition::from_map_position(self.to_map_position(world), world);
         self.x = pos.x;
         self.y = pos.y;
+    }
+
+    pub fn distance_to(&mut self, pos: PixelPosition<T>) -> f64 {
+        ((self.x.into() - pos.x.into()).abs().powf(2.0)
+            + (self.y.into() - pos.y.into()).abs().powf(2.0))
+        .sqrt()
     }
 }
 
