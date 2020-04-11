@@ -5,14 +5,14 @@ use crate::{
         config::GameConfig,
         explosion::Explosion,
         mob::Mob,
-        player::{Player, PlayerFlags, PlayerId, SerPlayer},
-        position::{MapPosition, PixelPositionF64, PositionOffset},
+        player::{Player, PlayerFlags, PlayerId},
+        position::{MapPosition, PixelPositionF64},
         types::{BombList, ExplosionList, MobList, PlayerList},
         world::World,
         worlddata::{InternalCellData, MobSpawner},
     },
     error::ZResult,
-    traits::celltypes::{CanPass, CellType},
+    traits::celltypes::CellType,
 };
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -22,7 +22,6 @@ use tokio::{
 };
 
 pub struct RustonatorGame {
-    config: GameConfig,
     width: u32,
     height: u32,
     world: World,
@@ -39,7 +38,6 @@ impl RustonatorGame {
         let mut world = World::new(width as i32, height as i32, &config);
         let mob_spawners = world.add_mob_spawners();
         Self {
-            config,
             width,
             height,
             world,
@@ -449,18 +447,15 @@ impl RustonatorGame {
             .collect();
 
         let ser_data = serde_json::json!({
+            "player": player,
+            "world": self.world.get_chunk_data(map_pos),
             "players": local_players,
             "mobs": local_mobs,
             "bombs": local_bombs,
             "explosions": local_explosions
         });
 
-        // TODO: get chunk data as well...
-        // Send everthing to send_frame() and serialize it there.
-        player
-            .ws()
-            .send(PlayerMessage::FrameData(player.ser()?, ser_data));
-
+        player.ws().send(PlayerMessage::FrameData(ser_data)).await?;
         Ok(())
     }
 }

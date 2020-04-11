@@ -1,8 +1,8 @@
-use crate::engine::bomb::BombId;
-use crate::engine::explosion::ExplosionId;
-use crate::engine::position::MapPosition;
-use crate::error::{ZError, ZResult};
-use crate::utils::misc::Timestamp;
+use crate::{
+    engine::{bomb::BombId, explosion::ExplosionId, position::MapPosition},
+    error::{ZError, ZResult},
+    utils::misc::Timestamp,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::convert::TryFrom;
@@ -70,7 +70,7 @@ impl WorldData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct WorldChunk {
     tx: i32,
     ty: i32,

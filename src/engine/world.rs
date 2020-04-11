@@ -244,19 +244,38 @@ impl World {
         MapPosition::new(1, 1)
     }
 
-    pub fn get_chunk_data(&self, map_x: i32, map_y: i32) -> WorldChunk {
-        let w = std::cmp::min(
+    pub fn get_chunk_data(&self, position: MapPosition) -> WorldChunk {
+        let halfwidth = self.sizes.chunk_size.width / 2;
+        let halfheight = self.sizes.chunk_size.height / 2;
+        let maxx = self.sizes.map_size.width - self.sizes.chunk_size.width;
+        let maxy = self.sizes.map_size.height - self.sizes.chunk_size.height;
+        let mut topleft = position + PositionOffset::new(halfwidth, halfheight);
+
+        // Clamp rect to map bounds.
+        if topleft.x < 0 {
+            topleft.x = 0;
+        } else if topleft.x >= maxx {
+            topleft.x = maxx - 1;
+        }
+        if topleft.y < 0 {
+            topleft.y = 0;
+        } else if topleft.y >= maxy {
+            topleft.y = maxy - 1;
+        }
+
+        let mut chunk = WorldChunk::new(
+            topleft.x,
+            topleft.y,
             self.sizes.chunk_size.width,
-            self.sizes.map_size.width - map_x,
-        );
-        let h = std::cmp::min(
             self.sizes.chunk_size.height,
-            self.sizes.map_size.height - map_y,
         );
-        let mut chunk = WorldChunk::new(map_x, map_y, w, h);
-        for y in map_y..(map_y + h) {
-            let index = self.get_index(MapPosition::new(map_x, y));
-            chunk.set_slice(index, self.data.get_slice(index, w as usize));
+        for y in topleft.y..(topleft.y + self.sizes.chunk_size.height) {
+            let index = self.get_index(MapPosition::new(topleft.x, y));
+            chunk.set_slice(
+                index,
+                self.data
+                    .get_slice(index, self.sizes.chunk_size.width as usize),
+            );
         }
 
         chunk

@@ -35,7 +35,7 @@ pub enum PlayerMessage {
     Action(Action),
     SpawnPlayer(SerPlayer, SerWorldData),
     PowerUp(String),
-    FrameData(SerPlayer, SerWorldData),
+    FrameData(serde_json::Value),
     Dead(String),
 }
 
