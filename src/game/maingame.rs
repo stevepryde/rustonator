@@ -57,7 +57,8 @@ impl RustonatorGame {
         let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
 
         // Limit max FPS.
-        let min_timeslice: f64 = 1.0 / 60.0;
+        let fps = 30.0;
+        let min_timeslice: f64 = 1.0 / fps;
 
         let mut last_frame = Instant::now();
         let mut count: u64 = 0;
