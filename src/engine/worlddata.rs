@@ -20,12 +20,9 @@ impl TryFrom<&WorldData> for SerWorldData {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(transparent)]
 pub struct WorldData {
     data: Vec<u8>,
-    #[serde(skip)]
     width: i32,
-    #[serde(skip)]
     height: i32,
 }
 

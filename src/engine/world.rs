@@ -18,6 +18,7 @@ use crate::{
     traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
+use log::*;
 use rand::Rng;
 use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
@@ -247,20 +248,20 @@ impl World {
     pub fn get_chunk_data(&self, position: MapPosition) -> WorldChunk {
         let halfwidth = self.sizes.chunk_size.width / 2;
         let halfheight = self.sizes.chunk_size.height / 2;
-        let maxx = self.sizes.map_size.width - self.sizes.chunk_size.width;
-        let maxy = self.sizes.map_size.height - self.sizes.chunk_size.height;
+        let maxx = (self.sizes.map_size.width - self.sizes.chunk_size.width) - 1;
+        let maxy = (self.sizes.map_size.height - self.sizes.chunk_size.height) - 1;
         let mut topleft = position + PositionOffset::new(halfwidth, halfheight);
 
         // Clamp rect to map bounds.
         if topleft.x < 0 {
             topleft.x = 0;
         } else if topleft.x >= maxx {
-            topleft.x = maxx - 1;
+            topleft.x = maxx - 2;
         }
         if topleft.y < 0 {
             topleft.y = 0;
         } else if topleft.y >= maxy {
-            topleft.y = maxy - 1;
+            topleft.y = maxy - 2;
         }
 
         let mut chunk = WorldChunk::new(
@@ -270,11 +271,13 @@ impl World {
             self.sizes.chunk_size.height,
         );
         for y in topleft.y..(topleft.y + self.sizes.chunk_size.height) {
-            let index = self.get_index(MapPosition::new(topleft.x, y));
+            let index_read = self.get_index(MapPosition::new(topleft.x, y));
+            let rel_y = y - topleft.y;
+            let index_write = (rel_y * self.sizes.chunk_size.width) as usize;
             chunk.set_slice(
-                index,
+                index_write,
                 self.data
-                    .get_slice(index, self.sizes.chunk_size.width as usize),
+                    .get_slice(index_read, self.sizes.chunk_size.width as usize),
             );
         }
 

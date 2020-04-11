@@ -350,6 +350,10 @@ impl Player {
 
         self.action.clear();
         match self.ws.recv_one().await {
+            Ok(None) => {
+                // No message waiting.
+                Ok(true)
+            }
             Ok(Some(PlayerMessage::Action(a))) => {
                 info!("Player {:?} action received {:?}", self.id(), a);
                 self.set_action(a);
@@ -370,6 +374,10 @@ impl Player {
 
     pub async fn handle_player_join(&mut self, world: &mut World) -> ZResult<bool> {
         match self.ws.recv_one().await {
+            Ok(None) => {
+                // No message waiting.
+                Ok(true)
+            }
             Ok(Some(PlayerMessage::JoinGame(name))) => {
                 info!("Player {:?} is joining with name '{}'", self.id(), name);
                 self.set_name(&sanitise_name(&name));
@@ -383,6 +391,7 @@ impl Player {
                     .unwrap_or(&"p1"))
                 .to_string();
 
+                self.state = PlayerState::Active;
                 // Serialize here to avoid cloning both structures only to serialize later.
                 self.ws
                     .send(PlayerMessage::SpawnPlayer(self.ser()?, world.data().ser()?))
@@ -391,7 +400,11 @@ impl Player {
                 Ok(true)
             }
             Ok(x) => {
-                error!("Player {:?} invalid message received: {:?}", self.id(), x);
+                error!(
+                    "Player {:?} invalid join message received: {:?}",
+                    self.id(),
+                    x
+                );
                 self.terminate();
                 Ok(false)
             }

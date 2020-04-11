@@ -1,0 +1,589 @@
+* {
+    font-family: 'Raleway', sans-serif;
+    font-size: 16px;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #222;
+    overflow-y: auto;
+    overflow-x: hidden;
+    cursor: auto;
+}
+
+a:link,
+a:active,
+a:visited {
+    color: #5ee65c;
+    text-decoration: none;
+    font-weight: bold;
+    font-family: 'Raleway', sans-serif;
+    text-shadow: 0px 0px 5px rgba(0, 0, 0, 1);
+}
+
+a:hover {
+    color: #68ff66;
+    text-decoration: none;
+    text-shadow: 0px 0px 5px rgba(0, 0, 0, 1);
+}
+
+#gameAreaWrapper {
+    margin-left: 20px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    margin-right: 20px;
+    height: 90vh;
+    padding: 4px;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+    background: radial-gradient(black 15%, transparent 16%) 0 0, radial-gradient(black 15%, transparent 16%) 8px 8px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 0 1px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 8px 9px;
+    background-color: #181818;
+    background-size: 16px 16px;
+    box-sizing: border-box;
+}
+
+#startMenuWrapper {
+    background-image: url("/assets/screen1_small.jpg");
+    background-size: cover;
+}
+
+#menuimg {
+    width: 480px;
+}
+
+
+/*CLASSES*/
+
+.ds-full-screen {
+    overflow: hidden;
+    margin: 0px;
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    z-index: -1;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+    background: radial-gradient(black 15%, transparent 16%) 0 0, radial-gradient(black 15%, transparent 16%) 8px 8px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 0 1px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 8px 9px;
+    background-color: #181818;
+    background-size: 16px 16px;
+    box-sizing: border-box;
+}
+
+.ds-full-screen-overflow {
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0px;
+    width: 100%;
+    height: 100%;
+    padding: 10px;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+    background: radial-gradient(black 15%, transparent 16%) 0 0, radial-gradient(black 15%, transparent 16%) 8px 8px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 0 1px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 8px 9px;
+    background-color: #181818;
+    background-size: 16px 16px;
+    box-sizing: border-box;
+}
+
+.ds-border-green {
+    margin: auto;
+    padding: 10px 20px;
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid #4bb849;
+    border-radius: 5px 5px 5px 5px;
+    color: white;
+    font-family: 'Raleway', sans-serif;
+    z-index: 10;
+}
+
+.ds-border-green-light {
+    margin: auto;
+    padding: 10px 20px;
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 2px solid #4bb849;
+    border-radius: 5px 5px 5px 5px;
+    color: black;
+    font-family: 'Raleway', sans-serif;
+    z-index: 10;
+}
+
+.ds-center-box {
+    margin-top: 20px;
+    width: 400px;
+    z-index: 20;
+}
+
+.ds-ad {
+    text-align: center;
+    font-size: 10px;
+    z-index: 200;
+    position: absolute;
+    height: 270px;
+    width: 320px;
+    color: white;
+}
+
+.ds-heading {
+    font-size: 20px;
+    text-align: center;
+    color: white;
+    font-weight: bold;
+    font-family: 'Raleway', sans-serif;
+}
+
+.ds-text-center {
+    text-align: center;
+}
+
+.ds-controls button {
+    position: relative;
+    margin: auto;
+    margin-top: 10px;
+    width: 100%;
+    max-width: 400px;
+    font-weight: bold;
+}
+
+.ds-text-standard {
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    font-size: 14px;
+    font-family: 'Raleway', sans-serif;
+}
+
+.ds-menu-title {
+    margin: auto;
+    top: 20px;
+    width: 50%;
+    padding: 0px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 50px;
+    font-family: 'Raleway', sans-serif;
+    color: black;
+}
+
+.scorebox {
+    width: 25%;
+    max-width: 400px;
+    font-size: 14px;
+    text-align: center;
+    font-weight: bold;
+    color: white;
+    font-family: 'Raleway', sans-serif;
+}
+
+.scorebox td.num {
+    width: 5%;
+    text-align: left;
+    vertical-align: top;
+    padding: 1px 3px;
+    font-size: 12px;
+}
+
+.scorebox td.name {
+    width: 75%;
+    text-align: left;
+    vertical-align: top;
+    word-wrap: break-word;
+    padding: 1px 3px;
+    font-size: 12px;
+}
+
+.scorebox td.score {
+    width: 20%;
+    text-align: right;
+    vertical-align: top;
+    padding: 1px 3px;
+    font-size: 12px;
+}
+
+.ds-align-left {
+    position: absolute;
+    left: 10px;
+    padding: 10px;
+}
+
+.ds-align-right {
+    position: absolute;
+    right: 10px;
+    padding: 10px;
+}
+
+.ds-align-bottom {
+    position: absolute;
+    bottom: 80px;
+    padding: 10px;
+}
+
+.ds-align-top {
+    position: absolute;
+    top: 80px;
+    padding: 10px;
+}
+
+.ds-button-solid {
+    padding: 10px;
+    box-sizing: border-box;
+    font-size: large;
+    color: black;
+    text-align: center;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 1.0);
+    background: #5ee65c;
+    border: 0;
+    border-bottom: 2px solid #2f742e;
+    cursor: pointer;
+    -webkit-box-shadow: inset 0 -2px #28be68;
+    box-shadow: inset 0 -2px #28be68;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+}
+
+.ds-button-solid:active,
+.ds-button-solid:hover {
+    top: 1px;
+    background: #5ee65c;
+    outline: none;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+}
+
+.ds-button-glow {
+    background-color: black;
+    border: 2px solid #4bb849;
+    color: white;
+    padding: 5px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    -webkit-transition-duration: 0.4s;
+    /* Safari */
+    transition-duration: 0.4s;
+    cursor: pointer;
+    font-family: 'Raleway', sans-serif;
+    border-radius: 5px 5px 5px 5px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 1.0);
+}
+
+.ds-button-glow:hover {
+    background-color: #4bb849;
+    color: white;
+}
+
+#leaderboard {
+    position: absolute;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #FFF;
+    top: 300px;
+    right: 30px;
+    width: 400px;
+    font-weight: bold;
+    text-align: left;
+    font-family: 'Raleway', sans-serif;
+}
+
+#iconarea {
+    position: absolute;
+    padding: 10px;
+    right: 130px;
+    top: 30px;
+}
+
+#player {
+    position: absolute;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #FFF;
+    top: 600px;
+    right: 30px;
+    width: 400px;
+    font-weight: bold;
+    text-align: left;
+    font-family: 'Raleway', sans-serif;
+}
+
+#player .heading {
+    font-family: 'Raleway', sans-serif;
+    font-weight: bold;
+    font-size: 16px;
+    text-align: center;
+    color: #ffff00;
+}
+
+#player table,
+tr,
+td {
+    font-family: 'Raleway', sans-serif;
+}
+
+#gameCanvas {
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+}
+
+#howtoplay {
+    padding: 20px;
+    width: 600px;
+    height: 50%;
+    font-size: 16px;
+    font-family: 'Raleway', sans-serif;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#playerNameInput {
+    width: 100%;
+    text-align: center;
+    padding: 10px;
+    border: solid 1px #dcdcdc;
+    transition: box-shadow 0.3s, border 0.3s;
+    box-sizing: border-box;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+    margin-bottom: 10px;
+    outline: none;
+}
+
+#playerNameInput:focus,
+#playerNameInput.focus {
+    border: solid 1px #CCCCCC;
+    box-shadow: 0 0 3px 1px #DDDDDD;
+}
+
+#startMenu .input-error {
+    color: #a00000;
+    display: none;
+    font-size: 12px;
+}
+
+#startMenu td {
+    color: white;
+    font-size: 16px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#menuFooter {
+    position: relative;
+    margin: auto;
+    padding: 10px;
+    color: white;
+    width: 50%;
+    text-align: center;
+    font-size: 24px;
+}
+
+#appbuttons {
+    position: relative;
+    margin: auto;
+    padding: 10px;
+    color: white;
+    width: 400px;
+    text-align: center;
+    font-family: 'Raleway', sans-serif;
+    font-size: 16px;
+}
+
+#appbuttons img {
+    height: 64px;
+}
+
+.modal {
+    display: none;
+    /* Hidden by default */
+    position: fixed;
+    /* Stay in place */
+    z-index: 1;
+    /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%;
+    /* Full width */
+    height: 100%;
+    /* Full height */
+    overflow: auto;
+    /* Enable scroll if needed */
+    padding: 10px;
+    background: radial-gradient(black 15%, transparent 16%) 0 0, radial-gradient(black 15%, transparent 16%) 8px 8px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 0 1px, radial-gradient(rgba(255, 255, 255, .1) 15%, transparent 20%) 8px 9px;
+    background-color: #181818;
+    background-size: 16px 16px;
+}
+
+
+/* Modal Content/Box */
+
+.modal-content {
+    background-color: #808080;
+    margin: 0 auto;
+    /* 15% from the top and centered */
+    margin-top: 10%;
+    padding: 10px;
+    border: 0px;
+    width: 70%;
+    text-align: center;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+    box-sizing: border-box;
+}
+
+.modal-content p {
+    padding: 0;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    font-family: 'Raleway', sans-serif;
+    color: black;
+}
+
+.close {
+    margin: 0 auto;
+    width: 30%;
+    height: 40px;
+    position: relative;
+    text-align: center;
+    box-sizing: border-box;
+    font-size: large;
+    color: black;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 1.0);
+    background: #68ff66;
+    border: 0;
+    border-bottom: 2px solid #43a341;
+    cursor: pointer;
+    -webkit-box-shadow: inset 0 -2px #28be68;
+    box-shadow: inset 0 -2px #28be68;
+    border-radius: 5px 5px 5px 5px;
+    -moz-border-radius: 5px 5px 5px 5px;
+    -webkit-border-radius: 5px 5px 5px 5px;
+}
+
+.close:active,
+.close:hover {
+    top: 1px;
+    background: #68ff66;
+    outline: none;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#mobbanner {
+    position: absolute;
+    bottom: 0px;
+    left: 0px;
+    width: 100%;
+    z-index: 3;
+    background: rgba(0, 0, 0, 0.7);
+    color: #FFF;
+    padding: 20px;
+    font-size: 16px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#mobbanner td {
+    color: white;
+    font-size: 24px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#orientwarning {
+    position: absolute;
+    margin: auto;
+    top: 50px;
+    left: 0px;
+    width: 400px;
+    z-index: 3;
+    background: rgba(0, 0, 0, 0.8);
+    color: #FFF;
+    padding: 50px;
+    font-size: 24px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#orientwarning p {
+    color: white;
+    font-weight: bold;
+    font-size: 24px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#moreiogamesbanner {
+    position: absolute;
+    bottom: 0px;
+    left: 0px;
+    width: 100%;
+    z-index: 3;
+    background: rgba(0, 0, 0, 0.7);
+    color: #FFF;
+    padding: 5px;
+    font-size: 12px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#moreiogamesbanner table {
+    border: 0px;
+}
+
+#moreiogamesbanner td {
+    padding: 0px 10px;
+}
+
+#breakout {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    width: 130px;
+    z-index: 3;
+    color: #FFF;
+    padding: 5px;
+    font-size: 12px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#mobileMenu {
+    position: absolute;
+    top: 60px;
+    left: 20px;
+    width: 200px;
+    z-index: 3;
+    color: #FFF;
+    padding: 5px;
+    font-size: 12px;
+    font-family: 'Raleway', sans-serif;
+}
+
+#modalWrapper {
+    display: none;
+    /* Hidden by default */
+    position: relative;
+    margin: auto;
+    z-index: 1;
+    /* Sit on top */
+    left: 0px;
+    top: 0px;
+    width: 90%;
+    overflow: auto;
+    /* Enable scroll if needed */
+}
+
+#exitpopup {
+    position: absolute;
+    top: 100px;
+    left: 100px;
+    margin: auto;
+    z-index: 3;
+}

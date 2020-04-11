@@ -30,6 +30,7 @@ impl Deref for MessageId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE", tag = "code", content = "data")]
 pub enum PlayerMessage {
     JoinGame(String),
     Action(Action),
@@ -41,6 +42,7 @@ pub enum PlayerMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerMessageExternal {
+    #[serde(skip_deserializing)]
     uid: u64,
     data: PlayerMessage,
 }
@@ -91,6 +93,7 @@ impl PlayerComm {
     }
 
     pub async fn send(&mut self, message: PlayerMessage) -> ZResult<()> {
+        // TODO: are we supposed to bump the uid here?
         self.sender
             .send(PlayerMessageExternal::new(*self.uid, message))
             .await

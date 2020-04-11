@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rustonator Client</title>
+    <meta
+      name="description"
+      content="Online multiplayer game featuring bombs, powerups and destruction. Ready? Go!"
+    />
+    <meta name="keywords" content="io,game,bomberman,clone,HTML5,online,multiplayer,bomb" />
+    <meta name="viewport" content="width=device-width, initial-scale=0.5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <meta property="og:url" content="http://detonator.stevepryde.com" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="detonator" />
+    <meta
+      property="og:description"
+      content="Online multiplayer game featuring bombs, powerups and destruction. Ready? Go!"
+    />
+    <meta property="og:image" content="http://xp.stevepryde.com/assets/icon.png" />
+
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+    default-src 'self' http://detonator.stevepryde.com
+    data: gap: 'unsafe-inline' https://ssl.gstatic.com;
+    style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
+    media-src *;
+    font-src 'self' https://fonts.gstatic.com;
+    script-src 'self' http://detonator.stevepryde.com 'unsafe-inline' 'unsafe-eval';
+    connect-src 'self' *;"
+    />
+
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+
+    <link rel="stylesheet" href="/css/main.css" />
+    <link href="https://fonts.googleapis.com/css?family=Raleway" rel="stylesheet" />
+  </head>
+
+  <body>
+    <div id="gameAreaWrapper" style="display:none;">
+      <div id="leaderboard"></div>
+      <div id="iconarea">
+        <img src="/assets/dsicon200.png" alt="game icon" />
+      </div>
+      <div id="player"></div>
+      <div id="gameCanvas"></div>
+    </div>
+    <div id="startMenuWrapper" class="ds-full-screen" style="display:block;">
+      <div id="menuTitle" class="ds-menu-title">
+        <img id="menuimg" src="/assets/dstitle2_small.png" alt="game title" />
+        <!--<img src="/assets/dstitle.png" alt="dstruct.io"><br /><br />-->
+      </div>
+      <div id="startMenu" class="ds-border-green ds-text-standard ds-center-box ds-controls">
+        <a href="/instructions.html">CLICK HERE FOR INSTRUCTIONS</a> <br />
+        <br />
+        <p style="font-size:12px; text-align:center;">
+          This page may take a few seconds to load the first time
+        </p>
+        <input
+          type="text"
+          tabindex="0"
+          autofocus
+          placeholder="Enter your name here"
+          id="playerNameInput"
+          maxlength="20"
+        />
+        <b class="input-error"
+          >Valid Characters: a-z A-Z 0-9 , . _ : ' ! ^ * ( ) = - <br />
+          Maximum length: 20 characters (including spaces)</b
+        >
+        <br />
+        <button id="startButton" class="ds-button-solid">PLAY</button> <br />
+        <button id="startButtonOffline" class="ds-button-solid">PLAY OFFLINE</button> <br />
+
+        <div id="extrainfo" style="display:none;">
+          <br />
+          <br />
+          <b>Desktop Controls</b>
+          <hr />
+          <b>Move</b> - Arrow keys <br />
+          <b>Bomb</b> - Space bar <br />
+          <br />
+          <br />
+          <a href="/glossary.html">Power-up item reference</a> <br />
+        </div>
+      </div>
+      <div id="menuFooter">
+        <a href="/privacy.html">Privacy</a> - <a href="/contact.html">Contact</a> <br />
+        <br />
+      </div>
+      <div id="appbuttons" class="ds-border-green" style="display:none;">
+        This game is a work-in-progress. More coming soon...
+      </div>
+      <div id="breakout" style="display:none;">
+        <button id="exitframe" class="ds-button-glow">Full Window</button>
+      </div>
+    </div>
+    <div id="postGameWrapper" style="display:none;" class="modal">
+      <div class="modal-content">
+        <div id="deadReason"></div>
+        <hr />
+        <button id="respawnBtn" class="close">Respawn</button>
+      </div>
+    </div>
+    <div id="respawnWrapper" style="display:none;" class="ds-full-screen">
+    </div>
+    <div id="loadingWrapper" style="display:none;" class="modal">
+      <div id="loadingText" class="modal-content"></div>
+    </div>
+    <div id="orientwarning" style="display:none;">
+      <p>
+        This game must be played in landscape orientation. Please turn your device 90 degrees.
+      </p>
+    </div>
+  </body>
+</html>
