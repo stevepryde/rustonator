@@ -18,16 +18,12 @@ export interface WorldData {
   data: CellType[];
 }
 
-export interface ChunkDataData {
-  data: CellType[]
-}
-
 export interface ChunkData {
   tx: number;
   ty: number;
   width: number;
   height: number;
-  data: ChunkDataData;
+  data: CellType[];
 }
 
 export class World {

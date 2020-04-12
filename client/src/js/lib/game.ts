@@ -14,21 +14,21 @@ import { ExplosionData } from "./common/explosion";
 import { StateMachine } from "./statemachine";
 
 export const targetFPS = 30;
-const GAME_DEBUG = false;
+const GAME_DEBUG = true;
 
-// let DEBUG_LOG: any = {};
+let DEBUG_LOG: any = {};
 let FPS_COUNT: number = 0;
 let FPS_INPUT_COUNT: number = 0;
-// if (GAME_DEBUG) {
-//     setInterval(() => {
-//         console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
-//         console.log("FPS: " + FPS_COUNT);
-//         console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
-//
-//         FPS_COUNT = 0;
-//         FPS_INPUT_COUNT = 0;
-//     }, 1000);
-// }
+if (GAME_DEBUG) {
+    setInterval(() => {
+        console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
+        console.log("FPS: " + FPS_COUNT);
+        console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
+
+        FPS_COUNT = 0;
+        FPS_INPUT_COUNT = 0;
+    }, 1000);
+}
 
 export enum GameState {
     Menu = 0,
@@ -952,7 +952,6 @@ export class DetonatorGame {
         }
 
         this.world.fromJSON(data);
-        console.log("WOrld = " + JSON.stringify(this.world));
 
         // Custom world using sprites.
         // NOTE: I tried using tilemap and it was horribly slow.
@@ -981,7 +980,7 @@ export class DetonatorGame {
         let ty = data.ty;
         let chunkwidth = data.width;
         let chunkheight = data.height;
-        let mapdata = data.data.data;
+        let mapdata = data.data;
         let index;
         let realIndex;
         let val;
@@ -1098,6 +1097,7 @@ export class DetonatorGame {
             }
         }
 
+
         // DEBUG: check number of valid tiles.
         // let count = 0;
         // for (let i = 0; i < worldSprites.length; i++) {
@@ -1165,6 +1165,8 @@ export class DetonatorGame {
         }
 
         this.updateWorld(worlddata);
+
+        DEBUG_LOG["curPlayer"] = this.curPlayer;
 
         // Blank slate.
         this.knownPlayers.mark();
@@ -1449,6 +1451,7 @@ export class DetonatorGame {
 
     clientSidePrediction(): void {
         if (!this.curPlayer || !this.tmpPlayer) {
+            console.error("No client prediction");
             return;
         }
 
@@ -1494,6 +1497,7 @@ export class DetonatorGame {
             this.tmpPlayer.action.fromJSON(this.actionList[i]);
             this.movePlayer(this.tmpPlayer);
         }
+        DEBUG_LOG["actionList"] = this.actionList;
 
         this.playerSprites[pid].x = this.tmpPlayer.x;
         this.playerSprites[pid].y = this.tmpPlayer.y;

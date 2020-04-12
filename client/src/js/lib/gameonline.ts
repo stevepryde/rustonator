@@ -97,7 +97,7 @@ export class DetonatorGameOnline extends DetonatorGame {
         let payload = JSON.parse(event.data).data;
         this.handleMessage(payload.code, payload.data);
       } catch (err) {
-        console.log("Parse error: " + event.data);
+        console.log("Parse error: " + err + "\n" + event.data);
         return;
       }
     };
@@ -107,10 +107,11 @@ export class DetonatorGameOnline extends DetonatorGame {
     switch (code) {
       case "SPAWNPLAYER": {
         let [playerData, worldData] = data;
-        console.log("Player spawned: " + playerData);
-        console.log("World data = " + worldData);
         this.spawnPlayer(playerData);
         this.createWorld(worldData);
+
+        console.log("curPlayer = " + JSON.stringify(this.curPlayer));
+        console.log("world = " + JSON.stringify(this.world));
         this.joined = true;
         break;
       }
@@ -160,7 +161,7 @@ export class DetonatorGameOnline extends DetonatorGame {
     }
 
     let msg = JSON.stringify({"data": {"code": cmd, "data": data}});
-    console.log("SOCKET SEND: " + msg);
+    // console.log("SOCKET SEND: " + msg);
     this.socket.send(msg);
   }
 

@@ -270,15 +270,18 @@ impl World {
             self.sizes.chunk_size.width,
             self.sizes.chunk_size.height,
         );
-        for y in topleft.y..(topleft.y + self.sizes.chunk_size.height) {
-            let index_read = self.get_index(MapPosition::new(topleft.x, y));
-            let rel_y = y - topleft.y;
-            let index_write = (rel_y * self.sizes.chunk_size.width) as usize;
+
+        let mut index_read = self.get_index(MapPosition::new(topleft.x, topleft.y));
+        let mut index_write = 0 as usize;
+        for _ in 0..self.sizes.chunk_size.height {
             chunk.set_slice(
                 index_write,
                 self.data
                     .get_slice(index_read, self.sizes.chunk_size.width as usize),
             );
+
+            index_read += self.sizes.map_size.width as usize;
+            index_write += self.sizes.chunk_size.width as usize;
         }
 
         chunk

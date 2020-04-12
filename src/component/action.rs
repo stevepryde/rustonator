@@ -50,7 +50,7 @@ impl Action {
         self.x = 0;
         self.y = 0;
         self.fire = false;
-        self.id = 0;
+        // self.id = 0;
         self.deltatime = 0.0;
     }
 

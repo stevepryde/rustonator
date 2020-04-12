@@ -71,8 +71,7 @@ impl WorldData {
 pub struct WorldChunk {
     tx: i32,
     ty: i32,
-    width: i32,
-    height: i32,
+    #[serde(flatten)]
     data: WorldData,
 }
 
@@ -81,8 +80,6 @@ impl WorldChunk {
         WorldChunk {
             tx,
             ty,
-            width,
-            height,
             data: WorldData::new(width, height),
         }
     }

@@ -64,6 +64,7 @@ pub enum PlayerState {
 #[derive(Debug, Serialize)]
 pub struct Player {
     id: PlayerId,
+    active: bool,
     #[serde(skip)]
     state: PlayerState,
     #[serde(flatten)]
@@ -92,6 +93,7 @@ impl Player {
     pub fn new(id: PlayerId, comm: PlayerComm) -> Self {
         Player {
             id,
+            active: false,
             state: PlayerState::Joining,
             position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
@@ -392,6 +394,7 @@ impl Player {
                 .to_string();
 
                 self.state = PlayerState::Active;
+                self.active = true;
                 // Serialize here to avoid cloning both structures only to serialize later.
                 self.ws
                     .send(PlayerMessage::SpawnPlayer(self.ser()?, world.data().ser()?))
