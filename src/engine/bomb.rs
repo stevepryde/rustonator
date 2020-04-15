@@ -1,6 +1,5 @@
 use crate::{
     engine::{
-        explosion::Explosion,
         player::{Player, PlayerId},
         position::MapPosition,
     },
@@ -189,14 +188,14 @@ impl Bomb {
         self.timestamp
     }
 
-    pub fn tick(&mut self, delta_time: f64) -> Option<Explosion> {
+    pub fn tick(&mut self, delta_time: f64) -> bool {
         self.remaining -= delta_time;
         if self.remaining.is_done() {
             self.remaining.clear();
             self.active = false;
-            Some(Explosion::new(Some(&self), self.position))
+            true
         } else {
-            None
+            false
         }
     }
 

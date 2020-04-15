@@ -14,8 +14,10 @@ use crate::{
     error::ZResult,
     traits::celltypes::CellType,
 };
+use futures::future::join_all;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
+
 use tokio::{
     sync::mpsc::Receiver,
     time::{Duration, Instant},
@@ -37,6 +39,8 @@ impl RustonatorGame {
         let config = GameConfig::new();
         let mut world = World::new(width as i32, height as i32, &config);
         let mob_spawners = world.add_mob_spawners();
+        world.populate_initial(&[]);
+
         Self {
             width,
             height,
@@ -69,7 +73,7 @@ impl RustonatorGame {
         let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
 
         loop {
-            let delta_time = last_frame.elapsed().as_secs_f64();
+            let mut delta_time = last_frame.elapsed().as_secs_f64();
             if delta_time < min_timeslice {
                 let sleep_time = (min_timeslice - delta_time) * 1_000f64;
 
@@ -80,6 +84,7 @@ impl RustonatorGame {
                 //       thread::sleep() here in the case where multiple threads
                 //       are supported.
                 tokio::time::delay_for(Duration::from_millis(sleep_time as u64)).await;
+                delta_time = last_frame.elapsed().as_secs_f64();
             }
             last_frame = Instant::now();
 
@@ -168,14 +173,19 @@ impl RustonatorGame {
 
         let mut explode_new = Vec::new();
         for bomb in self.bombs.iter_mut() {
-            if let Some(x) = bomb.tick(delta_time) {
+            if bomb.tick(delta_time) {
                 // Bomb exploded.
-                explode_new.push(x);
+                explode_new.push(bomb.id());
             }
         }
 
-        for explosion in explode_new.into_iter() {
-            self.world.add_explosion(explosion, &mut self.explosions);
+        for bomb_id in explode_new.into_iter() {
+            self.world.explode_bomb(
+                bomb_id,
+                &mut self.bombs,
+                &mut self.explosions,
+                &mut self.players,
+            );
         }
 
         self.bombs.retain(|_, b| b.is_active());
@@ -266,12 +276,7 @@ impl RustonatorGame {
                 }
             };
 
-            if player.is_dead() {
-                // No need to reinsert.
-                continue;
-            }
-
-            if player.action().fire() {
+            if player.is_active() && player.action().fire() {
                 self.create_bomb_for_player(&mut player);
 
                 // Prevent more bombs until the player releases fire.
@@ -279,24 +284,27 @@ impl RustonatorGame {
             }
 
             player.update(&self.world, delta_time);
-            match self.process_player_move(&mut player).await {
-                Ok(_) => {
-                    // Reinsert player.
-                    self.players.insert(player.id(), player);
-                }
-                Err(e) => {
-                    error!(
-                        "Error processing move for player: {:?} ({}): {:?}",
-                        player.id(),
-                        player.name(),
-                        e
-                    );
-                    player.terminate();
-                }
+            if let Err(e) = self.process_player_move(&mut player).await {
+                error!(
+                    "Error processing move for player: {:?} ({}): {:?}",
+                    player.id(),
+                    player.name(),
+                    e
+                );
+                player.terminate();
             }
+
+            // Reinsert player.
+            self.players.insert(player.id(), player);
         }
 
         // Remove dead players.
+        let mut futs = Vec::new();
+        for p in self.players.values_mut().filter(|p| p.is_dead()) {
+            futs.push(Box::pin(p.ws().disconnect()));
+        }
+        join_all(futs).await;
+
         self.players.retain(|_, p| !p.is_dead());
     }
 
@@ -304,84 +312,90 @@ impl RustonatorGame {
         let mut reason = String::new();
         let mut died = false;
 
-        // Did we collect anything?
-        let map_pos = player.position().to_map_position(&self.world);
-        match self.world.get_cell(map_pos) {
-            Some(CellType::Empty) | None => {}
-            Some(CellType::MobSpawner) => {
-                // You ded.
-                died = true;
-                reason = String::from("You touched a robot spawner");
-
-                // Create explosion but don't add it to the world. It is for display only.
-                let explosion = Explosion::new(None, map_pos);
-                self.explosions.add(explosion);
-            }
-            Some(ct) => {
-                if player.got_item(ct).await? {
-                    self.world.set_cell(map_pos, CellType::Empty);
-                }
-            }
-        }
-
-        // Did we touch something we shouldn't have?
-        if !player.has_flag(PlayerFlags::INVINCIBLE) {
-            // Mob?
-            let range = self.world.sizes().tile_size().width as f64 / 2.0;
-            for mob in self.mobs.iter() {
-                if player.position().distance_to(mob.position()) <= range {
+        if player.is_active() {
+            // Did we collect anything?
+            let map_pos = player.position().to_map_position(&self.world);
+            match self.world.get_cell(map_pos) {
+                Some(CellType::Empty) | None => {}
+                Some(CellType::MobSpawner) => {
                     // You ded.
                     died = true;
-                    reason = if mob.is_smart() {
-                        String::from("You were killed by a robot overlord")
-                    } else {
-                        String::from("You were killed by a robot")
-                    };
+                    reason = String::from("You touched a robot spawner");
 
                     // Create explosion but don't add it to the world. It is for display only.
                     let explosion = Explosion::new(None, map_pos);
                     self.explosions.add(explosion);
                 }
+                Some(ct) => {
+                    if player.got_item(ct).await? {
+                        self.world.set_cell(map_pos, CellType::Empty);
+                    }
+                }
             }
 
-            // Explosion?
-            if let Some(InternalCellData::Explosion(explosion_id)) =
-                self.world.get_internal_cell(map_pos)
-            {
-                if let Some(explosion) = self.explosions.get(*explosion_id) {
-                    if explosion.is_harmful() {
+            // Did we touch something we shouldn't have?
+            if !player.has_flag(PlayerFlags::INVINCIBLE) {
+                // Mob?
+                let range = self.world.sizes().tile_size().width as f64 / 2.0;
+                for mob in self.mobs.iter() {
+                    if player.position().distance_to(mob.position()) <= range {
+                        // You ded.
                         died = true;
+                        reason = if mob.is_smart() {
+                            String::from("You were killed by a robot overlord")
+                        } else {
+                            String::from("You were killed by a robot")
+                        };
 
-                        // Award points to the player that killed this mob.
-                        if explosion.pid() == player.id() {
-                            reason = String::from("Oops! You were killed by your own bomb");
-                        } else if let Some(p) = self.players.get_mut(&explosion.pid()) {
-                            if !p.is_dead() {
-                                reason = format!("You were killed by '{}'", p.name());
-                                p.increase_score(1000);
-                            } else {
-                                let pname = explosion.pname();
-                                let pname_str = if pname.is_empty() {
-                                    String::from("an unknown player")
+                        // Create explosion but don't add it to the world. It is for display only.
+                        let explosion = Explosion::new(None, map_pos);
+                        self.explosions.add(explosion);
+                    }
+                }
+
+                // Explosion?
+                if let Some(InternalCellData::Explosion(explosion_id)) =
+                    self.world.get_internal_cell(map_pos)
+                {
+                    if let Some(explosion) = self.explosions.get(*explosion_id) {
+                        if explosion.is_harmful() {
+                            died = true;
+
+                            // Award points to the player that killed this mob.
+                            if explosion.pid() == player.id() {
+                                reason = String::from("Oops! You were killed by your own bomb");
+                            } else if let Some(p) = self.players.get_mut(&explosion.pid()) {
+                                if !p.is_dead() {
+                                    reason = format!("You were killed by '{}'", p.name());
+                                    p.increase_score(1000);
                                 } else {
-                                    format!("'{}'", pname)
-                                };
+                                    let pname = explosion.pname();
+                                    let pname_str = if pname.is_empty() {
+                                        String::from("an unknown player")
+                                    } else {
+                                        format!("'{}'", pname)
+                                    };
 
-                                reason = format!(
-                                    "You were killed by {}, who has already died since placing \
-                                     that bomb",
-                                    pname_str
+                                    reason = format!(
+                                        "You were killed by {}, who has already died since \
+                                         placing that bomb",
+                                        pname_str
+                                    );
+                                }
+                            } else {
+                                reason = String::from(
+                                    "Hmm...you died from an explosion but we don't know whose it \
+                                     was",
                                 );
                             }
-                        } else {
-                            reason = String::from(
-                                "Hmm...you died from an explosion but we don't know whose it was",
-                            );
                         }
                     }
                 }
             }
         }
+
+        // Send frame update.
+        self.send_data_to_player(player).await?;
 
         if died {
             debug!(
@@ -393,9 +407,6 @@ impl RustonatorGame {
             );
             player.terminate();
             player.ws().send(PlayerMessage::Dead(reason)).await?;
-        } else {
-            // Send frame update.
-            self.send_data_to_player(player).await?;
         }
 
         Ok(())

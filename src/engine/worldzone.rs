@@ -50,6 +50,10 @@ impl WorldZone {
         self.size
     }
 
+    pub fn quota(&self) -> i32 {
+        self.block_quota
+    }
+
     pub fn quota_reached(&self) -> bool {
         self.num_blocks >= self.block_quota
     }
@@ -150,6 +154,10 @@ impl WorldZoneData {
         for zone in &mut self.zones {
             zone.num_players = 0;
         }
+    }
+
+    pub fn zone_count(&self) -> usize {
+        self.zones.len()
     }
 
     pub fn get_zone_at_index(&self, index: ZoneIndex) -> &WorldZone {

@@ -64,9 +64,7 @@ impl Add<PositionOffset> for PositionOffset {
 
 #[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize)]
 pub struct MapPosition {
-    #[serde(rename = "mapX")]
     pub x: i32,
-    #[serde(rename = "mapY")]
     pub y: i32,
 }
 

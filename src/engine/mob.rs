@@ -403,13 +403,7 @@ impl Mob {
         }
 
         self.server_data.target_remaining -= delta_time;
-        if self.server_data.target_remaining <= 0.0 {
-            new_target = true;
-        }
-
-        // This isn't as stupid as it looks. new_target could be set back at the top of
-        // this method as well.
-        if new_target {
+        if self.server_data.target_remaining <= 0.0 || new_target {
             self.choose_new_target(world, players);
         }
     }

@@ -1,14 +1,26 @@
 use log::{error, info};
 
-use crate::comms::playercomm::PlayerConnectEvent;
-use crate::comms::playercomm::{PlayerComm, PlayerMessageExternal, PlayerReceiver, PlayerSender};
-use crate::engine::player::PlayerId;
+use crate::{
+    comms::playercomm::{
+        PlayerComm,
+        PlayerConnectEvent,
+        PlayerMessageExternal,
+        PlayerReceiver,
+        PlayerSender,
+    },
+    engine::player::PlayerId,
+};
 use std::net::SocketAddr;
 
-use futures::stream::{SplitSink, SplitStream};
-use futures::{SinkExt, StreamExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{channel, Sender};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt,
+    StreamExt,
+};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::mpsc::{channel, Sender},
+};
 use tokio_tungstenite::{accept_async, WebSocketStream};
 use tungstenite::Message;
 
@@ -90,7 +102,8 @@ async fn accept_connection(
     stream: TcpStream,
     player_id: PlayerId,
     mut server_sender: Sender<PlayerConnectEvent>,
-) -> WsResult<()> {
+) -> WsResult<()>
+{
     if let Err(e) = handle_connection(peer, stream, player_id, server_sender.clone()).await {
         error!("Error processing connection: {:?}", e);
     }
@@ -107,7 +120,8 @@ async fn handle_connection(
     stream: TcpStream,
     player_id: PlayerId,
     server_sender: Sender<PlayerConnectEvent>,
-) -> WsResult<()> {
+) -> WsResult<()>
+{
     let ws_stream = accept_async(stream).await?;
 
     info!("New websocket connection: {}", peer);
@@ -138,9 +152,14 @@ async fn handle_connection(
 async fn process_websocket_read(
     mut ws_rx: SplitStream<WebSocketStream<TcpStream>>,
     mut player_tx: PlayerSender,
-) -> WsResult<()> {
+) -> WsResult<()>
+{
     while let Some(msg) = ws_rx.next().await {
         let msg = msg?;
+
+        if msg.is_close() {
+            break;
+        }
 
         if msg.is_text() {
             // Put message on the input channel.
@@ -164,8 +183,14 @@ async fn process_websocket_read(
 async fn process_websocket_write(
     mut player_rx: PlayerReceiver,
     mut ws_tx: SplitSink<WebSocketStream<TcpStream>, Message>,
-) -> WsResult<()> {
+) -> WsResult<()>
+{
     while let Some(msg) = player_rx.next().await {
+        if msg.is_disconnect() {
+            // TODO: trigger reader to drop as well.
+            break;
+        }
+
         ws_tx
             .send(Message::from(serde_json::to_value(&msg)?.to_string()))
             .await?;

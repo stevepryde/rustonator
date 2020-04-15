@@ -19,16 +19,16 @@ const GAME_DEBUG = true;
 let DEBUG_LOG: any = {};
 let FPS_COUNT: number = 0;
 let FPS_INPUT_COUNT: number = 0;
-if (GAME_DEBUG) {
-    setInterval(() => {
-        console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
-        console.log("FPS: " + FPS_COUNT);
-        console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
-
-        FPS_COUNT = 0;
-        FPS_INPUT_COUNT = 0;
-    }, 1000);
-}
+// if (GAME_DEBUG) {
+//     setInterval(() => {
+//         console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
+//         console.log("FPS: " + FPS_COUNT);
+//         console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
+//
+//         FPS_COUNT = 0;
+//         FPS_INPUT_COUNT = 0;
+//     }, 1000);
+// }
 
 export enum GameState {
     Menu = 0,
@@ -772,10 +772,10 @@ export class DetonatorGame {
         this.curPlayer.fromJSON(player);
     }
 
-    playerDied(data: DeadData): void {
+    playerDied(data: string): void {
         // We died. Too bad so sad.
         this.isDead = true;
-        this.deadReason = data.reason;
+        this.deadReason = data;
     }
 
     updateStatus(): void {
@@ -1107,16 +1107,16 @@ export class DetonatorGame {
         // }
     }
 
-    emitPowerup(data: PowerupData): void {
+    emitPowerup(data: string): void {
         if (!this.curPlayer || !this.game) {
             return;
         }
 
-        let text = this.game.add.text(this.curPlayer.x, this.curPlayer.y, data.text);
+        let text = this.game.add.text(this.curPlayer.x, this.curPlayer.y, data);
         text.anchor.setTo(0.5);
         text.font = "Raleway";
         text.fontSize = 12;
-        let first = data.text.charAt(0);
+        let first = data.charAt(0);
         if (first === "+") {
             text.fill = "#00ff00";
         } else if (first === "-") {
@@ -1165,6 +1165,8 @@ export class DetonatorGame {
         }
 
         this.updateWorld(worlddata);
+        let halftilewidth = this.world.tilewidth / 2.0;
+        let halftileheight = this.world.tileheight / 2.0;
 
         DEBUG_LOG["curPlayer"] = this.curPlayer;
 
@@ -1343,12 +1345,15 @@ export class DetonatorGame {
             bid = bombs[i].id.toString();
             this.knownBombs.set(bid, bombs[i]);
 
+            let bx = bombs[i].x * this.world.tilewidth + halftilewidth;
+            let by = bombs[i].y * this.world.tileheight + halftileheight;
+
             if (bid in this.bombSprites) {
-                this.bombSprites[bid].x = bombs[i].x;
-                this.bombSprites[bid].y = bombs[i].y;
+                this.bombSprites[bid].x = bx;
+                this.bombSprites[bid].y = by;
             } else {
                 // spawn new sprite for this bomb.
-                let bomb = this.game.add.image(bombs[i].x, bombs[i].y, "bombs");
+                let bomb = this.game.add.image(bx, by, "bombs");
                 if (this.bombGroup) {
                     this.bombGroup.add(bomb);
                 }
@@ -1384,12 +1389,15 @@ export class DetonatorGame {
             eid = explosions[i].id.toString();
             this.knownExplosions.set(eid, explosions[i]);
 
+            let ex = explosions[i].x * this.world.tilewidth + halftilewidth;
+            let ey = explosions[i].y * this.world.tileheight + halftileheight;
+
             if (eid in this.explosionEmitters) {
-                this.explosionEmitters[eid].emitX = explosions[i].x;
-                this.explosionEmitters[eid].emitY = explosions[i].y;
+                this.explosionEmitters[eid].emitX = ex;
+                this.explosionEmitters[eid].emitY = ey;
             } else {
                 // spawn new emitter for explosion.
-                let emitter = this.game.add.emitter(explosions[i].x, explosions[i].y, 3); // max particles.
+                let emitter = this.game.add.emitter(ex, ey, 3); // max particles.
                 if (this.explosionGroup) {
                     this.explosionGroup.add(emitter);
                 }
@@ -1530,26 +1538,16 @@ export class DetonatorGame {
         };
 
         if (tmpaction.x !== 0 && !player.canPass(this.world.getcell(mx + tmpaction.x, my))) {
-            if (tmpaction.x < 0 && player.x <= targetX) {
-                tmpaction.x = 0;
-                player.x = targetX;
-            } else if (tmpaction.x > 0 && player.x >= targetX) {
-                tmpaction.x = 0;
-                player.x = targetX;
-            }
+            tmpaction.x = 0;
+            player.x = targetX;
         }
         if (tmpaction.y !== 0 && !player.canPass(this.world.getcell(mx, my + tmpaction.y))) {
-            if (tmpaction.y < 0 && player.y <= targetY) {
-                tmpaction.y = 0;
-                player.y = targetY;
-            } else if (tmpaction.y > 0 && player.y >= targetY) {
-                tmpaction.y = 0;
-                player.y = targetY;
-            }
+            tmpaction.y = 0;
+            player.y = targetY;
         }
 
         // Lock to gridlines.
-        let tolerance = player.speed / targetFPS;
+        let tolerance = this.world.tilewidth * 0.3;
         if (tmpaction.x !== 0) {
             if (targetY > player.y + tolerance) {
                 tmpaction.x = 0;

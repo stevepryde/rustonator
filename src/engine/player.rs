@@ -58,10 +58,12 @@ impl TryFrom<&Player> for SerPlayer {
 pub enum PlayerState {
     Active,
     Joining,
+    Dying,
     Dead,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Player {
     id: PlayerId,
     active: bool,
@@ -87,6 +89,8 @@ pub struct Player {
     last_time: Timestamp,
     #[serde(skip)]
     ws: PlayerComm,
+    #[serde(skip)]
+    kill_timer: f64,
 }
 
 impl Player {
@@ -111,6 +115,7 @@ impl Player {
             effects_cache: Vec::new(),
             last_time: Timestamp::new(),
             ws: comm,
+            kill_timer: 2.0,
         }
     }
 
@@ -124,6 +129,14 @@ impl Player {
 
     pub fn is_dead(&self) -> bool {
         if let PlayerState::Dead = self.state {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        if let PlayerState::Active = self.state {
             true
         } else {
             false
@@ -259,14 +272,15 @@ impl Player {
     }
 
     pub fn terminate(&mut self) {
-        self.state = PlayerState::Dead;
+        self.state = PlayerState::Dying;
     }
 
     pub fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
         std::mem::swap(&mut self.effects, &mut self.effects_cache);
         self.effects.clear();
         while !self.effects_cache.is_empty() {
-            if let Some(x) = self.effects_cache.pop() {
+            if let Some(mut x) = self.effects_cache.pop() {
+                x.tick(delta_time);
                 if x.active {
                     self.effects.push(x);
                 } else {
@@ -357,7 +371,6 @@ impl Player {
                 Ok(true)
             }
             Ok(Some(PlayerMessage::Action(a))) => {
-                info!("Player {:?} action received {:?}", self.id(), a);
                 self.set_action(a);
                 Ok(true)
             }
@@ -507,6 +520,18 @@ impl Player {
     }
 
     pub fn update(&mut self, world: &World, delta_time: f64) {
+        if let PlayerState::Dying = self.state {
+            // We're dying. Just update the timer and get out.
+            self.kill_timer -= delta_time;
+            if self.kill_timer <= 0.0 {
+                self.state = PlayerState::Dead;
+            }
+            return;
+        }
+        if self.is_dead() {
+            return;
+        }
+
         let map_pos = self.position().to_map_position(&world);
         if let Some(CellType::Wall) = world.get_cell(map_pos) {
             // Oops - we're in a wall. Reposition to nearby blank space.
@@ -516,20 +541,25 @@ impl Player {
 
         let mut tmp_action = self.action().clone();
         // Try X movement.
-        let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-        if !self.can_pass_position(try_pos, &world) {
-            // Can't pass horizontally, so lock X position.
-            self.position_mut().x = PixelPositionF64::from_map_position(try_pos, &world).x;
-        }
-        // Try Y movement.
-        let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-        if !self.can_pass_position(try_pos, &world) {
-            // Can't pass vertically, so lock Y position.
-            self.position_mut().y = PixelPositionF64::from_map_position(try_pos, &world).y;
+        if tmp_action.x() != 0 {
+            let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+            if !self.can_pass_position(try_pos, &world) {
+                // Can't pass horizontally, so lock X position.
+                self.position_mut().x = PixelPositionF64::from_map_position(map_pos, &world).x;
+                tmp_action.setxy(0, tmp_action.y());
+            }
+        } else if tmp_action.y() != 0 {
+            // Try Y movement.
+            let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+            if !self.can_pass_position(try_pos, &world) {
+                // Can't pass vertically, so lock Y position.
+                self.position_mut().y = PixelPositionF64::from_map_position(map_pos, &world).y;
+                tmp_action.setxy(tmp_action.x(), 0);
+            }
         }
 
         // Lock to gridlines.
-        let tolerance = self.speed() * delta_time;
+        let tolerance = world.sizes().tile_size().width as f64 * 0.3;
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, &world).y;
@@ -538,7 +568,7 @@ impl Player {
             } else if target_y < self.position().y - tolerance {
                 tmp_action.setxy(0, -1);
             } else {
-                self.position().y = target_y;
+                self.position_mut().y = target_y;
                 tmp_action.setxy(tmp_action.x(), 0);
             }
         } else if tmp_action.y() != 0 {
@@ -549,7 +579,7 @@ impl Player {
             } else if target_x < self.position().x - tolerance {
                 tmp_action.setxy(-1, 0);
             } else {
-                self.position().x = target_x;
+                self.position_mut().x = target_x;
                 tmp_action.setxy(0, tmp_action.y());
             }
         }

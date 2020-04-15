@@ -104,14 +104,14 @@ impl From<MapPosition> for Explosion {
     }
 }
 
-impl From<Bomb> for Explosion {
-    fn from(bomb: Bomb) -> Self {
+impl From<(Bomb, MapPosition)> for Explosion {
+    fn from(bomb: (Bomb, MapPosition)) -> Self {
         Explosion {
             id: ExplosionId::from(0),
-            pid: bomb.pid(),
-            pname: bomb.pname().to_string(),
+            pid: bomb.0.pid(),
+            pname: bomb.0.pname().to_string(),
             active: true,
-            position: bomb.position(),
+            position: bomb.1,
             remaining: 0.5,
             harmful: true,
             timestamp: Timestamp::new(),

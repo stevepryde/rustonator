@@ -108,6 +108,17 @@ export class Player implements EffectTarget, IAgent {
         this.updateWithTempAction(this.action, deltaTime);
     }
 
+    getEffectiveSpeed(): number {
+        let effectiveSpeed = this.speed;
+        // NOTE: some effects may adjust speed outside safe limits.
+        if (effectiveSpeed < 50) {
+            effectiveSpeed = 50;
+        } else if (effectiveSpeed > 300) {
+            effectiveSpeed = 300;
+        }
+        return effectiveSpeed;
+    }
+
     updateWithTempAction(tmpaction: ActionData, deltaTime: number): void {
         // Process effects.
         if (this.effects.length > 0) {
@@ -122,18 +133,12 @@ export class Player implements EffectTarget, IAgent {
         }
 
         if (tmpaction) {
-            var effectiveSpeed = this.speed;
-            // NOTE: some effects may adjust speed outside safe limits.
-            if (effectiveSpeed < 50) {
-                effectiveSpeed = 50;
-            } else if (effectiveSpeed > 300) {
-                effectiveSpeed = 300;
-            }
 
+            let effectiveSpeed = this.getEffectiveSpeed();
             // THIS could be a bug - don't use the deltaTime from an Action! this could be user-supplied!
             // On the other hand, client-side prediction might break if the precise delta_time was not used for each update.
-            this.x += tmpaction.x * tmpaction.deltaTime * effectiveSpeed;
-            this.y += tmpaction.y * tmpaction.deltaTime * effectiveSpeed;
+            this.x += tmpaction.x * deltaTime * effectiveSpeed;
+            this.y += tmpaction.y * deltaTime * effectiveSpeed;
         }
     }
 
@@ -159,6 +164,6 @@ export class Player implements EffectTarget, IAgent {
     }
 
     hasFlag(flag: PlayerFlags): boolean {
-        return this.flags & flag ? true : false;
+        return !!(this.flags & flag);
     }
 }

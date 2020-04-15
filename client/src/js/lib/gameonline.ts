@@ -69,9 +69,9 @@ export class DetonatorGameOnline extends DetonatorGame {
 
     // Init socket.
     if (this.serverSSL) {
-      this.socket = new WebSocket("wss://" + this.serverAddress, ["rustonator"]);
+      this.socket = new WebSocket("wss://" + this.serverAddress, []);
     } else {
-      this.socket = new WebSocket("ws://" + this.serverAddress, ["rustonator"]);
+      this.socket = new WebSocket("ws://" + this.serverAddress, []);
     }
 
     this.joined = false;
@@ -127,6 +127,9 @@ export class DetonatorGameOnline extends DetonatorGame {
       }
       case "DEAD": {
         this.playerDied(data);
+        setTimeout(() => {
+          this.socket?.close();
+        }, 2000);
         break;
       }
       case "PONGME": {

@@ -29,6 +29,12 @@ impl Deref for MessageId {
     }
 }
 
+impl MessageId {
+    pub fn bump(&mut self) {
+        self.0 += 1;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE", tag = "code", content = "data")]
 pub enum PlayerMessage {
@@ -38,6 +44,7 @@ pub enum PlayerMessage {
     PowerUp(String),
     FrameData(serde_json::Value),
     Dead(String),
+    Disconnect,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +57,14 @@ pub struct PlayerMessageExternal {
 impl PlayerMessageExternal {
     pub fn new(uid: u64, data: PlayerMessage) -> Self {
         PlayerMessageExternal { uid, data }
+    }
+
+    pub fn is_disconnect(&self) -> bool {
+        if let PlayerMessage::Disconnect = self.data {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -93,7 +108,7 @@ impl PlayerComm {
     }
 
     pub async fn send(&mut self, message: PlayerMessage) -> ZResult<()> {
-        // TODO: are we supposed to bump the uid here?
+        self.uid.bump();
         self.sender
             .send(PlayerMessageExternal::new(*self.uid, message))
             .await
@@ -103,6 +118,10 @@ impl PlayerComm {
 
     pub async fn send_powerup(&mut self, powerup: &str) -> ZResult<()> {
         self.send(PlayerMessage::PowerUp(powerup.to_string())).await
+    }
+
+    pub async fn disconnect(&mut self) -> ZResult<()> {
+        self.send(PlayerMessage::Disconnect).await
     }
 }
 

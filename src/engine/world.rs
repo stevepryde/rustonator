@@ -18,7 +18,6 @@ use crate::{
     traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
-use log::*;
 use rand::Rng;
 use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
@@ -96,8 +95,10 @@ impl World {
                 CellType::Wall,
             );
 
-            for x in 1..((world.sizes.map_size.width as f64 / 2.0) as i32 - 2) {
-                world.set_cell(MapPosition::new(x * 2, y), CellType::Wall);
+            if y % 2 == 0 {
+                for x in 1..((world.sizes.map_size.width as f64 / 2.0) as i32) {
+                    world.set_cell(MapPosition::new(x * 2, y), CellType::Wall);
+                }
             }
         }
 
@@ -248,20 +249,20 @@ impl World {
     pub fn get_chunk_data(&self, position: MapPosition) -> WorldChunk {
         let halfwidth = self.sizes.chunk_size.width / 2;
         let halfheight = self.sizes.chunk_size.height / 2;
-        let maxx = (self.sizes.map_size.width - self.sizes.chunk_size.width) - 1;
-        let maxy = (self.sizes.map_size.height - self.sizes.chunk_size.height) - 1;
-        let mut topleft = position + PositionOffset::new(halfwidth, halfheight);
+        let maxx = self.sizes.map_size.width - self.sizes.chunk_size.width;
+        let maxy = self.sizes.map_size.height - self.sizes.chunk_size.height;
+        let mut topleft = position + PositionOffset::new(-halfwidth, -halfheight);
 
         // Clamp rect to map bounds.
         if topleft.x < 0 {
             topleft.x = 0;
-        } else if topleft.x >= maxx {
-            topleft.x = maxx - 2;
+        } else if topleft.x > maxx {
+            topleft.x = maxx;
         }
         if topleft.y < 0 {
             topleft.y = 0;
-        } else if topleft.y >= maxy {
-            topleft.y = maxy - 2;
+        } else if topleft.y > maxy {
+            topleft.y = maxy;
         }
 
         let mut chunk = WorldChunk::new(
@@ -327,6 +328,36 @@ impl World {
         }
     }
 
+    pub fn populate_initial(&mut self, map_positions: &[MapPosition]) {
+        let mut new_blocks = HashSet::new();
+        for zone in self.zones.zone_iter() {
+            for _ in 0..zone.quota() {
+                let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
+                let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+                let blank = self.find_nearest_blank(MapPosition::new(bx, by));
+
+                // Avoid top left corner - it's the safe space for spawning players if no blank
+                // spaces were found.
+                if blank.x == 1 && blank.y == 1 {
+                    continue;
+                }
+
+                if new_blocks.contains(&blank) {
+                    continue;
+                }
+
+                if !self.is_nearby_map_entity(blank, map_positions, 4) {
+                    new_blocks.insert(blank);
+                }
+            }
+        }
+
+        // Now add the blocks.
+        for block in new_blocks {
+            self.set_cell(block, CellType::Mystery);
+        }
+    }
+
     pub fn add_mob_spawners(&mut self) -> Vec<MobSpawner> {
         let numx = 2;
         let numy = 2;
@@ -364,9 +395,10 @@ impl World {
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb, bombs: &mut BombList) {
-        self.update_bomb_path(&bomb, &bombs);
         let pos = bomb.position();
         let id = bombs.add(bomb);
+        self.set_cell(pos, CellType::Bomb);
+        self.update_bomb_path(id, &bombs);
         self.data_internal.set_at(pos, InternalCellData::Bomb(id));
     }
 
@@ -400,13 +432,19 @@ impl World {
     /// This is because an explosion of any one of these bombs will
     /// result in all of them going boom, thus mobs need to know _that_ time not
     /// just the timestamp for the nearest bomb.
-    pub fn update_bomb_path(&mut self, bomb: &Bomb, bombs: &BombList) {
+    pub fn update_bomb_path(&mut self, bid: BombId, bombs: &BombList) {
         let mut bombs_to_follow: VecDeque<BombId> = VecDeque::new();
-        bombs_to_follow.push_back(bomb.id());
+        bombs_to_follow.push_back(bid);
         let mut seen: HashSet<MapPosition> = HashSet::new();
-        seen.insert(bomb.position());
-
-        let mut earliest_ts = bomb.timestamp();
+        let mut earliest_ts = match bombs.get(bid) {
+            Some(b) => {
+                seen.insert(b.position());
+                b.timestamp()
+            }
+            None => {
+                return;
+            }
+        };
 
         while let Some(bomb_id) = bombs_to_follow.pop_front() {
             if let Some(b) = bombs.get(bomb_id) {
@@ -424,6 +462,11 @@ impl World {
                 {
                     for dist in 1..=*b.range() {
                         let pos = b.position() + (offset * dist as i32);
+                        if seen.contains(&pos) {
+                            continue;
+                        }
+                        seen.insert(pos);
+
                         match self.get_cell(pos) {
                             Some(CellType::Bomb) => {
                                 if let Some(InternalCellData::Bomb(bomb_id)) =
@@ -456,14 +499,14 @@ impl World {
 
     pub fn explode_bomb(
         &mut self,
-        bomb: &mut Bomb,
+        bomb_id: BombId,
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
         players: &mut PlayerList,
     )
     {
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
-        bombs_to_explode.push_back(bomb.id());
+        bombs_to_explode.push_back(bomb_id);
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
             if let Some(b) = bombs.get_mut(bomb_id) {
                 if let Some(CellType::Bomb) = self.get_cell(b.position()) {
@@ -489,7 +532,7 @@ impl World {
         explosions: &mut ExplosionList,
     ) -> Vec<BombId>
     {
-        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+        self.add_explosion(Explosion::from((bomb.clone(), bomb.position())), explosions);
 
         let mut bombs_cascade = Vec::new();
 
@@ -512,7 +555,7 @@ impl World {
                             bombs_cascade.push(*bomb_id);
                         } else {
                             // Can't find bomb? Might as well assume the cell is empty.
-                            self.add_explosion(Explosion::from(bomb.clone()), explosions);
+                            self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
                         }
                         break;
                     }
@@ -520,11 +563,11 @@ impl World {
                     Some(CellType::ItemBomb)
                     | Some(CellType::ItemRange)
                     | Some(CellType::ItemRandom) => {
-                        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+                        self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
                         self.set_cell(pos, CellType::Empty);
                     }
                     Some(CellType::Empty) | Some(CellType::MobSpawner) => {
-                        self.add_explosion(Explosion::from(bomb.clone()), explosions);
+                        self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
                     }
 
                     // The following will block an explosion, so stop.
@@ -545,6 +588,7 @@ impl World {
                         } else {
                             CellType::Empty
                         };
+                        self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
                         self.set_cell(pos, item);
                         break;
                     }

@@ -79,7 +79,7 @@ export class World {
     this.tilewidth = data.tilewidth || 32;
     this.tileheight = data.tileheight || 32;
     this.chunkwidth = data.chunkwidth || 35;
-    this.chunkheight = data.chunkheight || 35;
+    this.chunkheight = data.chunkheight || 28;
     this.data = data.data;
   }
 
