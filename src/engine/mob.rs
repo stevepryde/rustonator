@@ -189,7 +189,7 @@ impl Default for Mob {
                 target_player: PlayerId::from(0),
                 target_dir: MobTargetDir::Up,
                 range: 8,
-                smart: rand::thread_rng().gen_range(0, 10) > 7,
+                smart: true, // rand::thread_rng().gen_range(0, 10) > 7,
                 danger: false,
             },
         }
@@ -395,8 +395,15 @@ impl Mob {
             }
 
             if !done {
+                let halftw = (world.sizes().tile_size().width as f64 / 2.0) - 1.0;
+                let halfth = (world.sizes().tile_size().height as f64 / 2.0) - 1.0;
                 let offset = self.server_data.target_dir.get_offset();
-                if self.can_pass_position(map_pos + offset, world) {
+                let target_pos = PixelPositionF64::new(
+                    self.position.x - (offset.x as f64 * halftw),
+                    self.position.y - (offset.y as f64 * halfth),
+                );
+                let target_map_pos = target_pos.to_map_position(world) + offset;
+                if self.can_pass_position(target_map_pos, world) {
                     self.action.set(offset.x, offset.y, false);
                 } else {
                     // There is a block here but we cannot pass.
@@ -461,7 +468,9 @@ impl Mob {
                 self.position.x = PixelPositionF64::from_map_position(map_pos, world).x;
                 tmp_action.setxy(0, tmp_action.y());
             }
-        } else if tmp_action.y() != 0 {
+        }
+
+        if tmp_action.y() != 0 {
             // Try Y movement.
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
             if !self.can_pass_position(try_pos, world) {
@@ -472,7 +481,7 @@ impl Mob {
         }
 
         // Lock to gridlines.
-        let tolerance = world.sizes().tile_size().width as f64 * 0.3;
+        let tolerance = world.sizes().tile_size().width as f64 * 0.1;
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, world).y;

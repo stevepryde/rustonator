@@ -1,8 +1,7 @@
 use crate::engine::bomb::BombTime;
 use chrono::Utc;
 use serde::Serialize;
-use std::ops::Add;
-use std::time::Duration;
+use std::{ops::Add, time::Duration};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -21,6 +20,10 @@ impl Timestamp {
 
     pub fn zero() -> Self {
         Timestamp(0)
+    }
+
+    pub fn is_past(&self) -> bool {
+        self.0 == 0 || self.0 < Utc::now().timestamp_millis() - 1000
     }
 }
 

@@ -58,7 +58,7 @@ impl RustonatorGame {
         mut player_join_rx: Receiver<PlayerConnectEvent>,
     ) -> ZResult<()>
     {
-        let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
+        let max_mobs = 1; // (self.width as f64 * self.height as f64 * 0.4) as usize;
 
         // Limit max FPS.
         let fps = 30.0;

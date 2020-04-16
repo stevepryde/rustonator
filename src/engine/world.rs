@@ -211,7 +211,16 @@ impl World {
     }
 
     pub fn get_mob_data(&self, pos: MapPosition) -> Option<&Timestamp> {
-        self.data_mob.get_at(pos)
+        match self.data_mob.get_at(pos) {
+            Some(ts) => {
+                if ts.is_past() {
+                    None
+                } else {
+                    Some(ts)
+                }
+            }
+            None => None,
+        }
     }
 
     pub fn clear_mob_data(&mut self, pos: MapPosition) {
@@ -493,7 +502,7 @@ impl World {
 
         // Now set the earliest timestamp at all locations!
         for pos in seen {
-            self.data_mob.set_at(pos, earliest_ts);
+            self.set_mob_data(pos, earliest_ts);
         }
     }
 

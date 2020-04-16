@@ -548,7 +548,9 @@ impl Player {
                 self.position_mut().x = PixelPositionF64::from_map_position(map_pos, &world).x;
                 tmp_action.setxy(0, tmp_action.y());
             }
-        } else if tmp_action.y() != 0 {
+        }
+
+        if tmp_action.y() != 0 {
             // Try Y movement.
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
             if !self.can_pass_position(try_pos, &world) {
