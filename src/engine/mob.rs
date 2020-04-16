@@ -12,6 +12,7 @@ use crate::{
         randenum::RandEnumFrom,
     },
 };
+use log::*;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
@@ -52,7 +53,7 @@ impl From<u8> for MobTargetMode {
 // Provides MobTargetMode::random().
 impl RandEnumFrom<u8> for MobTargetMode {
     fn get_enum_values() -> Vec<u8> {
-        (0..7).collect()
+        (0..6).collect()
     }
 }
 
@@ -290,6 +291,8 @@ impl Mob {
             self.server_data.old_position = map_pos;
             self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
         }
+
+        debug!("Mob new target: SERVER DATA {:?}", self.server_data);
     }
 
     fn update_action(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
@@ -451,20 +454,25 @@ impl Mob {
         self.update_action(delta_time, players, world);
         let mut tmp_action = self.action.clone();
         // Try X movement.
-        let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-        if !self.can_pass_position(try_pos, world) {
-            // Can't pass horizontally, so lock X position.
-            self.position.x = PixelPositionF64::from_map_position(try_pos, world).x;
-        }
-        // Try Y movement.
-        let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-        if !self.can_pass_position(try_pos, world) {
-            // Can't pass vertically, so lock Y position.
-            self.position.y = PixelPositionF64::from_map_position(try_pos, world).y;
+        if tmp_action.x() != 0 {
+            let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+            if !self.can_pass_position(try_pos, world) {
+                // Can't pass horizontally, so lock X position.
+                self.position.x = PixelPositionF64::from_map_position(map_pos, world).x;
+                tmp_action.setxy(0, tmp_action.y());
+            }
+        } else if tmp_action.y() != 0 {
+            // Try Y movement.
+            let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+            if !self.can_pass_position(try_pos, world) {
+                // Can't pass vertically, so lock Y position.
+                self.position.y = PixelPositionF64::from_map_position(map_pos, world).y;
+                tmp_action.setxy(tmp_action.x(), 0);
+            }
         }
 
         // Lock to gridlines.
-        let tolerance = self.speed * delta_time;
+        let tolerance = world.sizes().tile_size().width as f64 * 0.3;
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, world).y;

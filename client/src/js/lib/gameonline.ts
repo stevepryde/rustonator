@@ -84,7 +84,6 @@ export class DetonatorGameOnline extends DetonatorGame {
     socket.onopen = (event) => {
       console.log("Connected");
       let msg = JSON.stringify({"data": {"code": "JOINGAME", "data": this.playerName}});
-      console.log("SOCKET SEND JOIN: " + msg);
       if (this.socket) {
         this.socket.send(msg);
       }
@@ -109,9 +108,6 @@ export class DetonatorGameOnline extends DetonatorGame {
         let [playerData, worldData] = data;
         this.spawnPlayer(playerData);
         this.createWorld(worldData);
-
-        console.log("curPlayer = " + JSON.stringify(this.curPlayer));
-        console.log("world = " + JSON.stringify(this.world));
         this.joined = true;
         break;
       }
@@ -132,31 +128,36 @@ export class DetonatorGameOnline extends DetonatorGame {
         }, 2000);
         break;
       }
-      case "PONGME": {
-        this.updateLag();
+      case "PONG": {
+        this.updateLag(data);
         break;
       }
       default: {}
     }
   }
 
-  updateLag(): void {
+  updateLag(data: string): void {
     if (this.pingSent) {
+      // let obj = JSON.parse(data);
+      // let now = this?.game?.time.now;
+      // if (now) {
+      //   console.log(`LAG: ${now - obj.curMS}`);
+      // }
       this.pingSent = false;
     }
   }
 
+
   sendPing(): void {
-    if (!this.pingSent && this.game && this.socket) {
+    if (!this.pingSent && this.game && this.socket && this.socket.readyState === 1) {
       let curMS = this.game.time.now;
-      // this.socket.emit("pingme", { ms: curMS });
+      this.socket_wrapper("PING", JSON.stringify({ curMS }));
       this.pingSent = true;
     }
   }
 
   socket_wrapper(cmd: string, data: any): void {
     if (!this.socket || this.socket.readyState !== 1) {
-      console.error("Socket is null!");
       return;
     }
     if (!this.joined) {
@@ -171,6 +172,7 @@ export class DetonatorGameOnline extends DetonatorGame {
   update() {
     // Ping every 2 seconds.
     if (this.lagCounter++ > targetFPS * 2) {
+
       this.lagCounter = 0;
       if (!this.pingSent) {
         this.sendPing();

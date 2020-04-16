@@ -45,6 +45,8 @@ pub enum PlayerMessage {
     FrameData(serde_json::Value),
     Dead(String),
     Disconnect,
+    Ping(String),
+    Pong(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,14 +99,24 @@ impl PlayerComm {
     }
 
     pub async fn recv_one(&mut self) -> ZResult<Option<PlayerMessage>> {
-        match self.receiver.try_recv() {
-            Ok(v) => {
-                self.last_seen = Instant::now();
-                Ok(Some(v.data))
-            }
-            Err(TryRecvError::Empty) => Ok(None),
-            _ => Err(ZError::WebSocketError(WsError::Disconnected)),
+        // If we get a ping we will want to retry.
+        for _ in 0..2 {
+            return match self.receiver.try_recv() {
+                Ok(v) => {
+                    self.last_seen = Instant::now();
+                    if let PlayerMessage::Ping(payload) = v.data {
+                        self.send(PlayerMessage::Pong(payload)).await?;
+                        continue;
+                    } else {
+                        Ok(Some(v.data))
+                    }
+                }
+                Err(TryRecvError::Empty) => Ok(None),
+                _ => Err(ZError::WebSocketError(WsError::Disconnected)),
+            };
         }
+
+        Ok(None)
     }
 
     pub async fn send(&mut self, message: PlayerMessage) -> ZResult<()> {

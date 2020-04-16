@@ -14,21 +14,21 @@ import { ExplosionData } from "./common/explosion";
 import { StateMachine } from "./statemachine";
 
 export const targetFPS = 30;
-const GAME_DEBUG = true;
+const GAME_DEBUG = false;
 
 let DEBUG_LOG: any = {};
 let FPS_COUNT: number = 0;
 let FPS_INPUT_COUNT: number = 0;
-// if (GAME_DEBUG) {
-//     setInterval(() => {
-//         console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
-//         console.log("FPS: " + FPS_COUNT);
-//         console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
-//
-//         FPS_COUNT = 0;
-//         FPS_INPUT_COUNT = 0;
-//     }, 1000);
-// }
+if (GAME_DEBUG) {
+    setInterval(() => {
+        console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
+        console.log("FPS: " + FPS_COUNT);
+        console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
+
+        FPS_COUNT = 0;
+        FPS_INPUT_COUNT = 0;
+    }, 1000);
+}
 
 export enum GameState {
     Menu = 0,
@@ -1459,7 +1459,6 @@ export class DetonatorGame {
 
     clientSidePrediction(): void {
         if (!this.curPlayer || !this.tmpPlayer) {
-            console.error("No client prediction");
             return;
         }
 
@@ -1505,7 +1504,7 @@ export class DetonatorGame {
             this.tmpPlayer.action.fromJSON(this.actionList[i]);
             this.movePlayer(this.tmpPlayer);
         }
-        DEBUG_LOG["actionList"] = this.actionList;
+        DEBUG_LOG["actionList"] = this.actionList.length;
 
         this.playerSprites[pid].x = this.tmpPlayer.x;
         this.playerSprites[pid].y = this.tmpPlayer.y;
