@@ -2,16 +2,17 @@ import "pixi";
 import "p2";
 
 import Phaser from "phaser-ce";
-import { WebUIManager, withElement, setElementDisplay, IMG_PREFIX } from "./web";
+import {IMG_PREFIX, setElementDisplay, WebUIManager, withElement} from "./web";
 import GameConfig from "./common/config";
-import { Player, PlayerData } from "./common/player";
-import { ActionData, Action } from "./common/action";
-import { World, WorldData, ChunkData } from "./common/world";
-import { ObjectPool } from "./objectpool";
-import { Mob, MobData } from "./common/mob";
-import { BombData } from "./common/bomb";
-import { ExplosionData } from "./common/explosion";
-import { StateMachine } from "./statemachine";
+import {Player, PlayerData} from "./common/player";
+import {Action, ActionData} from "./common/action";
+import {ChunkData, World, WorldData} from "./common/world";
+import {ObjectPool} from "./objectpool";
+import {Mob, MobData} from "./common/mob";
+import {BombData} from "./common/bomb";
+import {ExplosionData} from "./common/explosion";
+import {StateMachine} from "./statemachine";
+import {EffectType} from "./common/effect";
 
 export const targetFPS = 30;
 const GAME_DEBUG = false;
@@ -1209,7 +1210,14 @@ export class DetonatorGame {
 
                 // Invincibility?
                 if (kPlayer.hasFlag(2) && this.flickerToggle) {
-                    this.playerSprites[pid].alpha = 0.1;
+                    let remaining = 10.0;
+                    for (let effect of kPlayer.effects) {
+                        if (effect.effectType === EffectType.Invincibility) {
+                            remaining = effect.remaining;
+                            break;
+                        }
+                    }
+                    this.playerSprites[pid].alpha = remaining < 5.0 ? 0.5 : 0.1;
                 } else {
                     this.playerSprites[pid].alpha = 1;
                 }
@@ -1536,14 +1544,7 @@ export class DetonatorGame {
             id: 0
         };
 
-        if (tmpaction.x !== 0 && !player.canPass(this.world.getcell(mx + tmpaction.x, my))) {
-            tmpaction.x = 0;
-            player.x = targetX;
-        }
-        if (tmpaction.y !== 0 && !player.canPass(this.world.getcell(mx, my + tmpaction.y))) {
-            tmpaction.y = 0;
-            player.y = targetY;
-        }
+        this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
 
         // Lock to gridlines.
         let tolerance = this.world.tilewidth * 0.3;
@@ -1572,6 +1573,25 @@ export class DetonatorGame {
         }
 
         player.updateWithTempAction(tmpaction, deltaTime);
+
+        this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
+    }
+
+    fixPositionAndTmpAction(player: Player, tmpaction: ActionData, mx: number, my: number, targetX: number, targetY: number) {
+        if (tmpaction.x !== 0 && !player.canPass(this.world.getcell(mx + tmpaction.x, my))) {
+            if ((tmpaction.x < 0 && player.x <= targetX) ||
+                (tmpaction.x > 0 && player.x >= targetX)) {
+                tmpaction.x = 0;
+                player.x = targetX;
+            }
+        }
+        if (tmpaction.y !== 0 && !player.canPass(this.world.getcell(mx, my + tmpaction.y))) {
+            if ((tmpaction.y < 0 && player.y <= targetY) ||
+                (tmpaction.y > 0 && player.y >= targetY)) {
+                tmpaction.y = 0;
+                player.y = targetY;
+            }
+        }
     }
 
     setSprite(sprite: Phaser.Sprite, action: ActionData): void {

@@ -6,7 +6,7 @@ use crate::{
     },
     engine::{
         bomb::{BombRange, BombTime},
-        position::{PixelPositionF64, PositionOffset},
+        position::{MapPosition, PixelPositionF64, PositionOffset},
         world::World,
     },
     error::{ZError, ZResult},
@@ -301,15 +301,12 @@ impl Player {
     }
 
     pub fn add_effect(&mut self, effect: Effect) {
-        let mut effect = effect;
         match effect.effect_type {
             EffectType::SpeedUp => {
                 self.speed += 50.0;
-                effect.name = String::from(">>");
             }
             EffectType::SlowDown => {
                 self.speed -= 50.0;
-                effect.name = String::from("<<");
             }
             EffectType::Invincibility => {
                 self.add_flag(PlayerFlags::INVINCIBLE);
@@ -347,9 +344,9 @@ impl Player {
     pub fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
-            rand::thread_rng().gen_range(3.0f64, 8.0f64),
+            rand::thread_rng().gen_range(3.0f64, 30.0f64),
         );
-        let name = effect.name.clone();
+        let name = effect.name();
         self.add_effect(effect);
         name
     }
@@ -512,6 +509,8 @@ impl Player {
                     powerup_name = self.add_random_effect();
                 }
 
+                debug!("POWERUP: {:?}", powerup_name);
+
                 self.ws().send_powerup(&powerup_name).await?;
                 Ok(true)
             }
@@ -540,25 +539,7 @@ impl Player {
         }
 
         let mut tmp_action = self.action().clone();
-        // Try X movement.
-        if tmp_action.x() != 0 {
-            let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-            if !self.can_pass_position(try_pos, &world) {
-                // Can't pass horizontally, so lock X position.
-                self.position_mut().x = PixelPositionF64::from_map_position(map_pos, &world).x;
-                tmp_action.setxy(0, tmp_action.y());
-            }
-        }
-
-        if tmp_action.y() != 0 {
-            // Try Y movement.
-            let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-            if !self.can_pass_position(try_pos, &world) {
-                // Can't pass vertically, so lock Y position.
-                self.position_mut().y = PixelPositionF64::from_map_position(map_pos, &world).y;
-                tmp_action.setxy(tmp_action.x(), 0);
-            }
-        }
+        self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
 
         // Lock to gridlines.
         let tolerance = world.sizes().tile_size().width as f64 * 0.3;
@@ -587,6 +568,45 @@ impl Player {
         }
 
         self.update_with_temp_action(&tmp_action, delta_time);
+        self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
+    }
+
+    fn fix_position_and_tmpaction(
+        &mut self,
+        tmp_action: &mut Action,
+        map_pos: MapPosition,
+        world: &World,
+    )
+    {
+        // Try X movement.
+        if tmp_action.x() != 0 {
+            let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+            if !self.can_pass_position(try_pos, &world) {
+                // Can't pass horizontally, so lock X position.
+                let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
+                if (tmp_action.x() < 0 && self.position.x <= target_x)
+                    || (tmp_action.x() > 0 && self.position.x >= target_x)
+                {
+                    self.position.x = target_x;
+                    tmp_action.setxy(0, tmp_action.y());
+                }
+            }
+        }
+
+        if tmp_action.y() != 0 {
+            // Try Y movement.
+            let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+            if !self.can_pass_position(try_pos, &world) {
+                // Can't pass vertically, so lock Y position.
+                let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
+                if (tmp_action.y() < 0 && self.position.y <= target_y)
+                    || (tmp_action.y() > 0 && self.position.y >= target_y)
+                {
+                    self.position.y = target_y;
+                    tmp_action.setxy(tmp_action.x(), 0);
+                }
+            }
+        }
     }
 }
 

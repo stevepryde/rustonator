@@ -10,6 +10,16 @@ pub enum EffectType {
     Invincibility = 2,
 }
 
+impl EffectType {
+    pub fn name(self) -> String {
+        match self {
+            EffectType::SpeedUp => String::from(">>"),
+            EffectType::SlowDown => String::from("<<"),
+            EffectType::Invincibility => String::from("∞"),
+        }
+    }
+}
+
 impl From<u8> for EffectType {
     fn from(value: u8) -> Self {
         match value {
@@ -28,10 +38,10 @@ impl RandEnumFrom<u8> for EffectType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Effect {
     pub effect_type: EffectType,
     pub remaining: f64,
-    pub name: String,
     pub active: bool,
 }
 
@@ -40,9 +50,12 @@ impl Effect {
         Effect {
             effect_type,
             remaining: duration,
-            name: String::new(),
             active: true,
         }
+    }
+
+    pub fn name(&self) -> String {
+        self.effect_type.name()
     }
 
     pub fn tick(&mut self, delta_time: f64) {

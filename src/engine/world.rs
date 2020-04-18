@@ -18,6 +18,7 @@ use crate::{
     traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
+use log::*;
 use rand::Rng;
 use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
@@ -427,11 +428,10 @@ impl World {
         self.clear_internal_cell(pos);
 
         // Also let mobs know it's "safe" here now
-        if match self.data_mob.get_at(pos) {
-            Some(ts) => explosion.timestamp() > *ts,
-            None => true,
-        } {
-            self.clear_mob_data(pos);
+        if let Some(ts) = self.data_mob.get_at(pos) {
+            if explosion.timestamp() > *ts {
+                self.clear_mob_data(pos);
+            }
         }
     }
 
@@ -454,6 +454,7 @@ impl World {
                 return;
             }
         };
+        let mut path_cells = Vec::new();
 
         while let Some(bomb_id) = bombs_to_follow.pop_front() {
             if let Some(b) = bombs.get(bomb_id) {
@@ -490,7 +491,7 @@ impl World {
                             | Some(CellType::ItemRange)
                             | Some(CellType::ItemRandom)
                             | Some(CellType::MobSpawner) => {
-                                seen.insert(pos);
+                                path_cells.push(pos);
                             }
                             // The following will block an explosion, so stop.
                             Some(CellType::Wall) | Some(CellType::Mystery) | None => break,
@@ -501,7 +502,8 @@ impl World {
         }
 
         // Now set the earliest timestamp at all locations!
-        for pos in seen {
+        for pos in path_cells {
+            debug!("Set {:?} to {:?}", pos, earliest_ts);
             self.set_mob_data(pos, earliest_ts);
         }
     }

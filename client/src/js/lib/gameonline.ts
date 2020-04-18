@@ -106,6 +106,7 @@ export class DetonatorGameOnline extends DetonatorGame {
     switch (code) {
       case "SPAWNPLAYER": {
         let [playerData, worldData] = data;
+        console.log(playerData);
         this.spawnPlayer(playerData);
         this.createWorld(worldData);
         this.joined = true;

@@ -262,7 +262,7 @@ impl Mob {
                         .is_within_range(map_pos, self.server_data.range as i32)
                     {
                         self.server_data.target_player = p.id();
-                        self.server_data.target_remaining = thread_rng().gen_range(10.0, 120.0);
+                        self.server_data.target_remaining = thread_rng().gen_range(5.0, 120.0);
                         has_target = true;
                         break;
                     }
@@ -288,6 +288,7 @@ impl Mob {
 
         if !has_target {
             // Just assign a default - clockwise.
+            self.server_data.target_mode = MobTargetMode::Clockwise;
             self.server_data.old_position = map_pos;
             self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
         }
@@ -465,8 +466,13 @@ impl Mob {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
             if !self.can_pass_position(try_pos, world) {
                 // Can't pass horizontally, so lock X position.
-                self.position.x = PixelPositionF64::from_map_position(map_pos, world).x;
-                tmp_action.setxy(0, tmp_action.y());
+                let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
+                if (tmp_action.x() < 0 && self.position.x <= target_x)
+                    || (tmp_action.x() > 0 && self.position.x >= target_x)
+                {
+                    self.position.x = target_x;
+                    tmp_action.setxy(0, tmp_action.y());
+                }
             }
         }
 
@@ -475,13 +481,18 @@ impl Mob {
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
             if !self.can_pass_position(try_pos, world) {
                 // Can't pass vertically, so lock Y position.
-                self.position.y = PixelPositionF64::from_map_position(map_pos, world).y;
-                tmp_action.setxy(tmp_action.x(), 0);
+                let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
+                if (tmp_action.y() < 0 && self.position.y <= target_y)
+                    || (tmp_action.y() > 0 && self.position.y >= target_y)
+                {
+                    self.position.y = target_y;
+                    tmp_action.setxy(tmp_action.x(), 0);
+                }
             }
         }
 
         // Lock to gridlines.
-        let tolerance = world.sizes().tile_size().width as f64 * 0.1;
+        let tolerance = world.sizes().tile_size().width as f64 * 0.3;
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, world).y;

@@ -1,4 +1,4 @@
-import PlayerFlags from "./playerflags";
+import { PlayerFlags } from "./playerflags";
 
 export interface EffectTarget {
     speed: number;
@@ -9,7 +9,7 @@ export interface EffectTarget {
 export enum EffectType {
     SpeedUp = 0,
     SlowDown = 1,
-    Invincibility = 100
+    Invincibility = 2
 }
 
 export function getRandomEffectType(): EffectType {
