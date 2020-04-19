@@ -39,7 +39,6 @@ use crate::comms::websocket::spawn_websocket_server;
 use tokio::sync::mpsc::channel;
 
 use crate::game::maingame::RustonatorGame;
-use fern;
 
 #[tokio::main]
 async fn main() {

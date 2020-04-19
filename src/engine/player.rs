@@ -14,7 +14,6 @@ use crate::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
     },
-    utils::misc::Timestamp,
 };
 use log::*;
 use rand::{seq::SliceRandom, Rng};

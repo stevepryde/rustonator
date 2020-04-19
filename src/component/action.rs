@@ -7,7 +7,7 @@ pub struct Action {
     fire: bool,
     id: u32,
     #[serde(rename = "deltaTime")]
-    delta_time: f64, // TODO: do I need this?
+    delta_time: f64,
 }
 
 impl Action {
@@ -21,12 +21,10 @@ impl Action {
 
     /// Force to -1, 0, 1
     fn clamp(val: i32) -> i32 {
-        if val > 0 {
-            1
-        } else if val < 0 {
-            -1
-        } else {
-            0
+        match val {
+            x if x > 0 => 1,
+            x if x < 0 => -1,
+            _ => 0,
         }
     }
 
