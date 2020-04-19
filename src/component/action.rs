@@ -7,7 +7,7 @@ pub struct Action {
     fire: bool,
     id: u32,
     #[serde(rename = "deltaTime")]
-    deltatime: f64, // TODO: do I need this?
+    delta_time: f64, // TODO: do I need this?
 }
 
 impl Action {
@@ -51,7 +51,7 @@ impl Action {
         self.y = 0;
         self.fire = false;
         // self.id = 0;
-        self.deltatime = 0.0;
+        self.delta_time = 0.0;
     }
 
     pub fn set(&mut self, x: i32, y: i32, fire: bool) {
@@ -63,5 +63,9 @@ impl Action {
     pub fn setxy(&mut self, x: i32, y: i32) {
         self.x = Self::clamp(x);
         self.y = Self::clamp(y);
+    }
+
+    pub fn set_dt(&mut self, delta_time: f64) {
+        self.delta_time = delta_time;
     }
 }

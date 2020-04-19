@@ -530,9 +530,7 @@ impl CanPass for Mob {
         match world.get_cell(position) {
             Some(CellType::Wall) | Some(CellType::Mystery) | Some(CellType::Bomb) => false,
             _ => {
-                if !self.is_smart() {
-                    true
-                } else if !self.server_data.danger {
+                if self.is_smart() && !self.server_data.danger {
                     // Check for danger!
                     world.get_mob_data(position).is_none()
                 } else {

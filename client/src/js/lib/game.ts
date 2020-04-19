@@ -1570,7 +1570,7 @@ export class DetonatorGame {
             }
         }
 
-        player.updateWithTempAction(tmpaction, deltaTime);
+        player.updateWithTempAction(tmpaction, tmpaction.deltaTime);
 
         this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
     }

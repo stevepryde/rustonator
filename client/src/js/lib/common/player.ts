@@ -88,7 +88,20 @@ export class Player implements EffectTarget, IAgent {
         this.active = data.active;
         this.x = data.x;
         this.y = data.y;
-        this.action.fromJSON(data.action);
+
+        // We need to fudge the action to make animations work smoothly.
+        // The action will be cleared by the server if no input is registered for one frame,
+        // but we don't want the client to clear animations just because it was late sending
+        // input. However, client-side-prediction does need to clear the input to match the server.
+        // This is a nasty hack - set the deltaTime to 0, which means CSP effectively drops
+        // this input frame while the animation can still use the x and y to determine direction.
+        let tmpAction = this.action;
+        tmpAction.fromJSON(data.action);
+        if (tmpAction.x != 0 || tmpAction.y != 0) {
+            this.action = tmpAction;
+        } else {
+            this.action.deltaTime = 0;
+        }
         this.speed = data.speed;
         this.image = data.image;
         this.range = data.range;
@@ -122,7 +135,7 @@ export class Player implements EffectTarget, IAgent {
     updateWithTempAction(tmpaction: ActionData, deltaTime: number): void {
         // Process effects.
         if (this.effects.length > 0) {
-            for (var i = 0; i < this.effects.length; i++) {
+            for (let i = 0; i < this.effects.length; i++) {
                 this.effects[i].update(deltaTime, this);
             }
 
@@ -133,12 +146,9 @@ export class Player implements EffectTarget, IAgent {
         }
 
         if (tmpaction) {
-
             let effectiveSpeed = this.getEffectiveSpeed();
-            // THIS could be a bug - don't use the deltaTime from an Action! this could be user-supplied!
-            // On the other hand, client-side prediction might break if the precise delta_time was not used for each update.
-            this.x += tmpaction.x * deltaTime * effectiveSpeed;
-            this.y += tmpaction.y * deltaTime * effectiveSpeed;
+            this.x += tmpaction.x * tmpaction.deltaTime * effectiveSpeed;
+            this.y += tmpaction.y * tmpaction.deltaTime * effectiveSpeed;
         }
     }
 

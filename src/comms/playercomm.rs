@@ -98,6 +98,10 @@ impl PlayerComm {
         self.last_seen.elapsed().as_secs()
     }
 
+    pub fn last_seen_ms(&self) -> u128 {
+        self.last_seen.elapsed().as_millis()
+    }
+
     pub async fn recv_one(&mut self) -> ZResult<Option<PlayerMessage>> {
         // If we get a ping we will want to retry.
         for _ in 0..2 {

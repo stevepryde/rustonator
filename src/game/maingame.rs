@@ -76,7 +76,7 @@ impl RustonatorGame {
         loop {
             let mut delta_time = last_frame.elapsed().as_secs_f64();
             if delta_time < min_timeslice {
-                let sleep_time = (min_timeslice - delta_time) * 1_000f64;
+                // Only allow new players if we have time.
 
                 // NOTE: We need to use an async delay here just in case the server
                 //       happens to be running on a single thread.
@@ -84,13 +84,16 @@ impl RustonatorGame {
                 //       CPU cores / tokio threads on startup and switch to using
                 //       thread::sleep() here in the case where multiple threads
                 //       are supported.
+
+                delta_time = last_frame.elapsed().as_secs_f64();
+                let sleep_time = (min_timeslice - delta_time) * 1_000f64;
                 tokio::time::delay_for(Duration::from_millis(sleep_time as u64)).await;
                 delta_time = last_frame.elapsed().as_secs_f64();
             }
             last_frame = Instant::now();
 
             self.player_connect_events(&mut player_join_rx).await;
-            self.process_player_inputs().await;
+            self.process_player_inputs(delta_time).await;
             self.game_process_explosions_and_bombs(delta_time);
             self.game_process_mobs(delta_time);
             self.game_process_players(delta_time).await;
@@ -148,10 +151,10 @@ impl RustonatorGame {
         }
     }
 
-    pub async fn process_player_inputs(&mut self) {
+    pub async fn process_player_inputs(&mut self, delta_time: f64) {
         let mut quit = Vec::new();
         for p in self.players.values_mut() {
-            if let Ok(false) | Err(_) = p.handle_player_input(&mut self.world).await {
+            if let Ok(false) | Err(_) = p.handle_player_input(&mut self.world, delta_time).await {
                 quit.push(p.id());
             }
         }

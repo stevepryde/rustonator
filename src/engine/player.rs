@@ -86,8 +86,6 @@ pub struct Player {
     #[serde(skip)]
     effects_cache: Vec<Effect>,
     #[serde(skip)]
-    last_time: Timestamp,
-    #[serde(skip)]
     ws: PlayerComm,
     #[serde(skip)]
     kill_timer: f64,
@@ -113,7 +111,6 @@ impl Player {
             rank: 0,
             effects: Vec::new(),
             effects_cache: Vec::new(),
-            last_time: Timestamp::new(),
             ws: comm,
             kill_timer: 2.0,
         }
@@ -272,9 +269,6 @@ impl Player {
     }
 
     pub fn terminate(&mut self) {
-        if self.has_flag(PlayerFlags::Invincible) {
-            panic!("Got terminated while invincible!")
-        }
         self.state = PlayerState::Dying;
     }
 
@@ -299,6 +293,7 @@ impl Player {
         } else {
             self.speed
         };
+
         self.position.x += tmp_action.x() as f64 * delta_time * effective_speed;
         self.position.y += tmp_action.y() as f64 * delta_time * effective_speed;
     }
@@ -369,7 +364,12 @@ impl Player {
         self.add_effect(effect);
     }
 
-    pub async fn handle_player_input(&mut self, world: &mut World) -> ZResult<bool> {
+    pub async fn handle_player_input(
+        &mut self,
+        world: &mut World,
+        delta_time: f64,
+    ) -> ZResult<bool>
+    {
         if !self.has_joined() {
             return self.handle_player_join(world).await;
         }
@@ -378,9 +378,11 @@ impl Player {
         match self.ws.recv_one().await {
             Ok(None) => {
                 // No message waiting.
+                self.action.set_dt(0.0);
                 Ok(true)
             }
-            Ok(Some(PlayerMessage::Action(a))) => {
+            Ok(Some(PlayerMessage::Action(mut a))) => {
+                a.set_dt(delta_time);
                 self.set_action(a);
                 Ok(true)
             }
