@@ -119,12 +119,12 @@ export class DetonatorGameOnline extends DetonatorGame {
       case "FRAMEDATA": {
         // Player is received separately, but just stick them in with players.
         data.players.push(data.player);
-        // this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
+        this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
 
         // DEBUG: simulate lag.
-        setTimeout(() => {
-          this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
-        }, 200);
+        // setTimeout(() => {
+        //   this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
+        // }, 200);
 
         break;
       }
