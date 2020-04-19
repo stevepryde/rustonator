@@ -5,7 +5,6 @@ name = "rustonator"
 version = "0.1.0"
 
 [dependencies]
-bitflags = "1.1.0"
 chrono = "0.4"
 futures = "0.3"
 itertools = "0.8"

@@ -66,7 +66,7 @@ pub struct BombTime(f64);
 
 impl BombTime {
     pub fn millis(self) -> f64 {
-        self.0
+        self.0 * 1000.0
     }
 
     pub fn clear(&mut self) {

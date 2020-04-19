@@ -13,6 +13,7 @@ import {BombData} from "./common/bomb";
 import {ExplosionData} from "./common/explosion";
 import {StateMachine} from "./statemachine";
 import {EffectType} from "./common/effect";
+import {PlayerFlags} from "./common/playerflags";
 
 export const targetFPS = 30;
 const GAME_DEBUG = false;
@@ -1169,8 +1170,6 @@ export class DetonatorGame {
         let halftilewidth = this.world.tilewidth / 2.0;
         let halftileheight = this.world.tileheight / 2.0;
 
-        DEBUG_LOG["curPlayer"] = this.curPlayer;
-
         // Blank slate.
         this.knownPlayers.mark();
         this.knownMobs.mark();
@@ -1209,7 +1208,7 @@ export class DetonatorGame {
                 }
 
                 // Invincibility?
-                if (kPlayer.hasFlag(2) && this.flickerToggle) {
+                if (kPlayer.hasFlag(PlayerFlags.Invincible) && this.flickerToggle) {
                     let remaining = 10.0;
                     for (let effect of kPlayer.effects) {
                         if (effect.effectType === EffectType.Invincibility) {
@@ -1512,7 +1511,6 @@ export class DetonatorGame {
             this.tmpPlayer.action.fromJSON(this.actionList[i]);
             this.movePlayer(this.tmpPlayer);
         }
-        DEBUG_LOG["actionList"] = this.actionList.length;
 
         this.playerSprites[pid].x = this.tmpPlayer.x;
         this.playerSprites[pid].y = this.tmpPlayer.y;

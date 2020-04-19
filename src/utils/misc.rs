@@ -22,7 +22,12 @@ impl Timestamp {
         Timestamp(0)
     }
 
+    pub fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+
     pub fn is_past(self) -> bool {
+        // Allow a 1 second buffer.
         self.0 == 0 || self.0 < Utc::now().timestamp_millis() - 1000
     }
 }

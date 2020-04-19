@@ -58,7 +58,7 @@ impl RustonatorGame {
         mut player_join_rx: Receiver<PlayerConnectEvent>,
     ) -> ZResult<()>
     {
-        let max_mobs = 1; // (self.width as f64 * self.height as f64 * 0.4) as usize;
+        let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
 
         // Limit max FPS.
         let fps = 30.0;
@@ -70,6 +70,7 @@ impl RustonatorGame {
 
         let mut add_blocks_timer = Instant::now();
         let mut mob_spawn_timer = Instant::now();
+
         let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
 
         loop {
@@ -318,13 +319,15 @@ impl RustonatorGame {
             match self.world.get_cell(map_pos) {
                 Some(CellType::Empty) | None => {}
                 Some(CellType::MobSpawner) => {
-                    // You ded.
-                    died = true;
-                    reason = String::from("You touched a robot spawner");
+                    if !player.has_flag(PlayerFlags::Invincible) {
+                        // You ded.
+                        died = true;
+                        reason = String::from("You touched a robot spawner");
 
-                    // Create explosion but don't add it to the world. It is for display only.
-                    let explosion = Explosion::new(None, map_pos);
-                    self.explosions.add(explosion);
+                        // Create explosion but don't add it to the world. It is for display only.
+                        let explosion = Explosion::new(None, map_pos);
+                        self.explosions.add(explosion);
+                    }
                 }
                 Some(ct) => {
                     if player.got_item(ct).await? {
@@ -334,7 +337,7 @@ impl RustonatorGame {
             }
 
             // Did we touch something we shouldn't have?
-            if !player.has_flag(PlayerFlags::INVINCIBLE) {
+            if !player.has_flag(PlayerFlags::Invincible) {
                 // Mob?
                 let range = self.world.sizes().tile_size().width as f64 / 2.0;
                 for mob in self.mobs.iter() {

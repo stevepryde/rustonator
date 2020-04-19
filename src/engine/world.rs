@@ -140,17 +140,35 @@ impl World {
         self.data.set_at(pos, value as u8);
     }
 
+    /// This is here for debugging only.
+    fn _validate_pos(&self, p: MapPosition, text: &str) {
+        if p.x <= 0
+            || p.x >= self.sizes().map_size().width - 1
+            || p.y <= 0
+            || p.y >= self.sizes().map_size().height - 1
+        {
+            error!("Got invalid pos: {:?} ({})", p, text);
+        }
+    }
+
     pub fn find_nearest_blank(&self, pos: MapPosition) -> MapPosition {
+        // clamp pos.
+
         if let Some(CellType::Empty) = self.get_cell(pos) {
             return pos;
         }
 
         for radius in 1..20 {
             // Top.
-            if radius < pos.y {
-                for offset_x in 0..radius * 2 {
-                    let p = pos + PositionOffset::new(offset_x - radius, -radius);
-                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+            if pos.y - radius > 0 {
+                for offset_x in -radius..=radius {
+                    let xx = pos.x + offset_x;
+                    if xx <= 0 || xx >= self.sizes.map_size.width - 1 {
+                        continue;
+                    }
+
+                    let p = pos + PositionOffset::new(offset_x, -radius);
+                    if let Some(CellType::Empty) = self.get_cell(p) {
                         return p;
                     }
                 }
@@ -158,19 +176,29 @@ impl World {
 
             // Bottom.
             if pos.y + radius < self.sizes.map_size.height - 1 {
-                for offset_x in 0..radius * 2 {
-                    let p = pos + PositionOffset::new(offset_x - radius, radius);
-                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                for offset_x in -radius..=radius {
+                    let xx = pos.x + offset_x;
+                    if xx <= 0 || xx >= self.sizes.map_size.width - 1 {
+                        continue;
+                    }
+
+                    let p = pos + PositionOffset::new(offset_x, radius);
+                    if let Some(CellType::Empty) = self.get_cell(p) {
                         return p;
                     }
                 }
             }
 
             // Left.
-            if radius < pos.x {
-                for offset_y in 0..radius * 2 {
-                    let p = pos + PositionOffset::new(-radius, offset_y - radius);
-                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+            if pos.x - radius > 0 {
+                for offset_y in -radius..=radius {
+                    let yy = pos.y + offset_y;
+                    if yy <= 0 || yy >= self.sizes.map_size.height - 1 {
+                        continue;
+                    }
+
+                    let p = pos + PositionOffset::new(-radius, offset_y);
+                    if let Some(CellType::Empty) = self.get_cell(p) {
                         return p;
                     }
                 }
@@ -178,9 +206,14 @@ impl World {
 
             // Right.
             if pos.x + radius < self.sizes.map_size.width - 1 {
-                for offset_y in 0..radius * 2 {
-                    let p = pos + PositionOffset::new(-radius, offset_y + radius);
-                    if let Some(CellType::Empty) = self.data.get_at(p).map(CellType::from) {
+                for offset_y in -radius..=radius {
+                    let yy = pos.y + offset_y;
+                    if yy <= 0 || yy >= self.sizes.map_size.height - 1 {
+                        continue;
+                    }
+
+                    let p = pos + PositionOffset::new(-radius, offset_y);
+                    if let Some(CellType::Empty) = self.get_cell(p) {
                         return p;
                     }
                 }
@@ -203,29 +236,24 @@ impl World {
             Some(ts) => {
                 // Only overwrite the bomb timestamp if it's sooner
                 // i.e. if this one was deployed before the existing one
-                if timestamp < *ts {
-                    self.data_mob.set_at(pos, timestamp);
+                if timestamp < ts {
+                    self.data_mob.set_at(pos, Some(timestamp));
                 }
             }
-            None => self.data_mob.set_at(pos, timestamp),
+            None => self.data_mob.set_at(pos, Some(timestamp)),
         }
     }
 
-    pub fn get_mob_data(&self, pos: MapPosition) -> Option<&Timestamp> {
-        match self.data_mob.get_at(pos) {
-            Some(ts) => {
-                if ts.is_past() {
-                    None
-                } else {
-                    Some(ts)
-                }
-            }
-            None => None,
-        }
+    pub fn get_mob_data(&self, pos: MapPosition) -> Option<Timestamp> {
+        self.data_mob.get_at(pos)
+    }
+
+    pub fn get_mob_data_update(&mut self, pos: MapPosition) -> Option<Timestamp> {
+        self.data_mob.get_at_fix(pos)
     }
 
     pub fn clear_mob_data(&mut self, pos: MapPosition) {
-        self.data_mob.set_at(pos, Timestamp::zero());
+        self.data_mob.set_at(pos, None);
     }
 
     pub fn get_spawn_point(&self) -> MapPosition {
@@ -429,7 +457,7 @@ impl World {
 
         // Also let mobs know it's "safe" here now
         if let Some(ts) = self.data_mob.get_at(pos) {
-            if explosion.timestamp() > *ts {
+            if explosion.timestamp() >= ts {
                 self.clear_mob_data(pos);
             }
         }
@@ -503,7 +531,6 @@ impl World {
 
         // Now set the earliest timestamp at all locations!
         for pos in path_cells {
-            debug!("Set {:?} to {:?}", pos, earliest_ts);
             self.set_mob_data(pos, earliest_ts);
         }
     }
@@ -654,10 +681,8 @@ impl World {
                 continue;
             }
 
-            if let Some(cell_type) = self.get_cell(*m) {
-                if agent.can_pass(cell_type) {
-                    possible_moves.push(PathFindData::new_from(*m, pf));
-                }
+            if agent.can_pass(*m, self) {
+                possible_moves.push(PathFindData::new_from(*m, pf));
             }
         }
         possible_moves
@@ -739,10 +764,12 @@ impl World {
             let mut processed = 0;
             for element in &open_list {
                 match self.get_mob_data(element.position) {
-                    None => return element.position,
+                    None => {
+                        return element.position;
+                    }
                     Some(ts) => {
-                        if ts > &safest_timestamp {
-                            safest_timestamp = *ts;
+                        if ts > safest_timestamp {
+                            safest_timestamp = ts;
                             safest_pos = element.position;
                         }
                     }
@@ -764,6 +791,7 @@ impl World {
             // Remove processed items.
             open_list = open_list.split_off(processed);
         }
+
         safest_pos
     }
 }

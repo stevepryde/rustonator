@@ -16,7 +16,6 @@ use crate::{
     },
     utils::misc::Timestamp,
 };
-use bitflags::bitflags;
 use log::*;
 use rand::{seq::SliceRandom, Rng};
 use regex::Regex;
@@ -24,13 +23,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::convert::TryFrom;
 
-bitflags! {
-    #[derive(Default, Serialize, Deserialize)]
-    pub struct PlayerFlags: u32 {
-        const WALK_THROUGH_BOMBS = 0b0001;
-        const INVINCIBLE         = 0b0010;
-    }
+#[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum PlayerFlags {
+    WalkThroughBombs,
+    Invincible,
 }
+
+pub type PlayerFlagsList = Vec<PlayerFlags>;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -78,7 +78,7 @@ pub struct Player {
     bomb_time: BombTime,
     max_bombs: u32,
     cur_bombs: u32,
-    flags: PlayerFlags,
+    flags: PlayerFlagsList,
     score: u32,
     name: String,
     rank: u32,
@@ -107,7 +107,7 @@ impl Player {
             bomb_time: BombTime::from(3.0),
             max_bombs: 1,
             cur_bombs: 0,
-            flags: PlayerFlags::default(),
+            flags: PlayerFlagsList::new(),
             score: 0,
             name: String::new(),
             rank: 0,
@@ -272,6 +272,9 @@ impl Player {
     }
 
     pub fn terminate(&mut self) {
+        if self.has_flag(PlayerFlags::Invincible) {
+            panic!("Got terminated while invincible!")
+        }
         self.state = PlayerState::Dying;
     }
 
@@ -309,7 +312,7 @@ impl Player {
                 self.speed -= 50.0;
             }
             EffectType::Invincibility => {
-                self.add_flag(PlayerFlags::INVINCIBLE);
+                self.add_flag(PlayerFlags::Invincible);
             }
         }
         self.effects.push(effect);
@@ -324,27 +327,37 @@ impl Player {
                 self.speed += 50.0;
             }
             EffectType::Invincibility => {
-                self.del_flag(PlayerFlags::INVINCIBLE);
+                self.del_flag(&PlayerFlags::Invincible);
             }
         }
     }
 
     pub fn add_flag(&mut self, flag: PlayerFlags) {
-        self.flags |= flag;
+        self.flags.push(flag);
     }
 
-    pub fn del_flag(&mut self, flag: PlayerFlags) {
-        self.flags &= !flag;
+    pub fn del_flag(&mut self, flag: &PlayerFlags) {
+        let mut index: Option<usize> = None;
+        for (i, f) in self.flags.iter().enumerate() {
+            if f == flag {
+                index = Some(i);
+                break;
+            }
+        }
+
+        if let Some(i) = index {
+            self.flags.remove(i);
+        }
     }
 
     pub fn has_flag(&self, flag: PlayerFlags) -> bool {
-        self.flags.contains(flag)
+        self.flags.contains(&flag)
     }
 
     pub fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
-            rand::thread_rng().gen_range(3.0f64, 30.0f64),
+            rand::thread_rng().gen_range(3.0f64, 10.0f64),
         );
         let name = effect.name();
         self.add_effect(effect);
@@ -470,11 +483,11 @@ impl Player {
                         }
                     }
                     4 => {
-                        if self.has_flag(PlayerFlags::WALK_THROUGH_BOMBS) {
-                            self.del_flag(PlayerFlags::WALK_THROUGH_BOMBS);
+                        if self.has_flag(PlayerFlags::WalkThroughBombs) {
+                            self.del_flag(&PlayerFlags::WalkThroughBombs);
                             powerup_name = "-TB".to_owned();
                         } else {
-                            self.add_flag(PlayerFlags::WALK_THROUGH_BOMBS);
+                            self.add_flag(PlayerFlags::WalkThroughBombs);
                             powerup_name = "+TB".to_owned();
                         }
                     }
@@ -508,8 +521,6 @@ impl Player {
                 if powerup_name.is_empty() {
                     powerup_name = self.add_random_effect();
                 }
-
-                debug!("POWERUP: {:?}", powerup_name);
 
                 self.ws().send_powerup(&powerup_name).await?;
                 Ok(true)
@@ -581,7 +592,7 @@ impl Player {
         // Try X movement.
         if tmp_action.x() != 0 {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-            if !self.can_pass_position(try_pos, &world) {
+            if !self.can_pass(try_pos, &world) {
                 // Can't pass horizontally, so lock X position.
                 let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
                 if (tmp_action.x() < 0 && self.position.x <= target_x)
@@ -596,7 +607,7 @@ impl Player {
         if tmp_action.y() != 0 {
             // Try Y movement.
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-            if !self.can_pass_position(try_pos, &world) {
+            if !self.can_pass(try_pos, &world) {
                 // Can't pass vertically, so lock Y position.
                 let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
                 if (tmp_action.y() < 0 && self.position.y <= target_y)
@@ -611,11 +622,10 @@ impl Player {
 }
 
 impl CanPass for Player {
-    fn can_pass(&self, cell_type: CellType) -> bool {
-        match cell_type {
-            CellType::Wall => false,
-            CellType::Mystery => false,
-            CellType::Bomb => self.has_flag(PlayerFlags::WALK_THROUGH_BOMBS),
+    fn can_pass(&self, position: MapPosition, world: &World) -> bool {
+        match world.get_cell(position) {
+            Some(CellType::Wall) | Some(CellType::Mystery) => false,
+            Some(CellType::Bomb) => self.has_flag(PlayerFlags::WalkThroughBombs),
             _ => true,
         }
     }

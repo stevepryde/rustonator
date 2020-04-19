@@ -52,7 +52,7 @@ async fn main() {
             eprintln!("Websocket error: {:?}", e);
         }
     });
-    let mut game = RustonatorGame::new(51, 51);
+    let mut game = RustonatorGame::new(47, 47);
     if let Err(e) = game.game_loop(player_join_rx).await {
         eprintln!("Error: {:?}", e);
     }

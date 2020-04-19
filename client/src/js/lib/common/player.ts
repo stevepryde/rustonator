@@ -1,5 +1,5 @@
 import { Action, ActionData } from "./action";
-import { PlayerFlags, PlayerFlagsObj, castPlayerFlags } from "./playerflags";
+import { PlayerFlags } from "./playerflags";
 import { Effect, EffectData, EffectTarget } from "./effect";
 import CellType from "./celltypes";
 import { IAgent } from "./agent";
@@ -16,7 +16,7 @@ export interface PlayerData {
     bombTime: number;
     maxBombs: number;
     curBombs: number;
-    flags: PlayerFlagsObj;
+    flags: string[];
     score: number;
     name: string;
     rank: number;
@@ -35,7 +35,7 @@ export class Player implements EffectTarget, IAgent {
     bombTime: number;
     maxBombs: number;
     curBombs: number;
-    flags: PlayerFlagsObj;
+    flags: string[];
     score: number;
     name: string;
     rank: number;
@@ -53,7 +53,7 @@ export class Player implements EffectTarget, IAgent {
         this.bombTime = 3; // Seconds until bomb explodes. Max: 4, Min: 1.
         this.maxBombs = 1; // Bomb limit.
         this.curBombs = 0; // Number of bombs currently deployed.
-        this.flags = { bits: PlayerFlags.None }; // Player flags.
+        this.flags = []; // Player flags.
         this.score = 0;
         this.name = "";
         this.rank = 0;
@@ -95,7 +95,7 @@ export class Player implements EffectTarget, IAgent {
         this.bombTime = data.bombTime;
         this.maxBombs = data.maxBombs;
         this.curBombs = data.curBombs;
-        this.flags = { bits: castPlayerFlags(data.flags.bits) };
+        this.flags = data.flags;
         this.score = data.score;
         this.name = data.name;
         this.rank = data.rank;
@@ -156,14 +156,15 @@ export class Player implements EffectTarget, IAgent {
     }
 
     addFlag(flag: PlayerFlags): void {
-        this.flags.bits |= flag;
+        this.flags.push(flag);
     }
 
     delFlag(flag: PlayerFlags): void {
-        this.flags.bits &= ~flag;
+        let index = this.flags.indexOf(flag);
+        this.flags.splice(index, 1);
     }
 
     hasFlag(flag: PlayerFlags): boolean {
-        return !!(this.flags.bits & flag);
+        return this.flags.includes(flag);
     }
 }

@@ -1,5 +1,7 @@
 use crate::engine::position::{MapPosition, SizeInTiles};
 use itertools::Itertools;
+use log::*;
+use std::cmp::min;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ZonePosition {
@@ -76,44 +78,34 @@ impl WorldZoneData {
         quota_factor: f64,
     ) -> Self
     {
-        let mut zones_across = (width_in_tiles as f64 / zone_width as f64) as usize;
-        let mut last_width = zone_width;
-        let remainder_width = width_in_tiles as usize % zones_across;
-        if remainder_width > 0 {
-            zones_across += 1;
-            last_width = remainder_width as i32;
-        }
+        let mut zones = Vec::with_capacity(
+            (width_in_tiles / zone_width) as usize * (height_in_tiles / zone_height) as usize,
+        );
+        let mut zones_across = 0;
+        let mut zones_down = 0;
 
-        let mut zones_down = (height_in_tiles as f64 / zone_height as f64) as usize;
-        let mut last_height = zone_height;
-        let remainder_height = height_in_tiles as usize % zones_down;
-        if remainder_height > 0 {
+        let mut zone_y = 0;
+        while zone_y < height_in_tiles {
             zones_down += 1;
-            last_height = remainder_height as i32;
-        }
+            let mut zone_x = 0;
+            let zheight = min(height_in_tiles - zone_y, zone_height);
+            while zone_x < width_in_tiles {
+                if zone_y == 0 {
+                    // Only count top row.
+                    zones_across += 1;
+                }
 
-        let mut zones = Vec::with_capacity(zones_across * zones_down);
-        for y in 0..zones_down {
-            for x in 0..zones_across {
-                let zwidth = if x < zones_across - 1 {
-                    zone_width
-                } else {
-                    last_width
-                };
-                let zheight = if y < zones_down - 1 {
-                    zone_height
-                } else {
-                    last_height
-                };
-
+                let zwidth = min(width_in_tiles - zone_x, zone_width);
                 zones.push(WorldZone {
-                    position: MapPosition::new(x as i32 * zone_width, y as i32 * zone_height),
+                    position: MapPosition::new(zone_x, zone_y),
                     size: SizeInTiles::new(zwidth, zheight),
                     num_blocks: 0,
                     num_players: 0,
                     block_quota: ((zwidth * zheight) as f64 * quota_factor) as i32,
                 });
+                zone_x += zone_width;
             }
+            zone_y += zone_height;
         }
 
         WorldZoneData {
@@ -124,30 +116,43 @@ impl WorldZoneData {
         }
     }
 
-    pub fn get_zone_index(&self, pos: ZonePosition) -> ZoneIndex {
-        ZoneIndex(((pos.y * self.zones_across as i32) + pos.x) as usize)
+    pub fn get_zone_index(&self, pos: ZonePosition) -> Option<ZoneIndex> {
+        let index = ((pos.y * self.zones_across as i32) + pos.x) as usize;
+        if index < self.zones.len() {
+            Some(ZoneIndex(index))
+        } else {
+            None
+        }
     }
 
-    pub fn map_to_zone_index(&self, pos: MapPosition) -> ZoneIndex {
+    pub fn map_to_zone_index(&self, pos: MapPosition) -> Option<ZoneIndex> {
         self.get_zone_index(ZonePosition::from_map_position(pos, self.zone_size))
     }
 
     pub fn add_block_at_map_xy(&mut self, pos: MapPosition) {
-        let zone_index = self.map_to_zone_index(pos);
-        self.zones[zone_index.0].num_blocks += 1;
+        if let Some(zone_index) = self.map_to_zone_index(pos) {
+            self.zones[zone_index.0].num_blocks += 1;
+        } else {
+            error!("Got invalid pos: {:?}", pos);
+        }
     }
 
     pub fn del_block_at_map_xy(&mut self, pos: MapPosition) {
-        let zone_index = self.map_to_zone_index(pos);
-
-        if self.zones[zone_index.0].num_blocks > 0 {
-            self.zones[zone_index.0].num_blocks -= 1;
+        if let Some(zone_index) = self.map_to_zone_index(pos) {
+            if self.zones[zone_index.0].num_blocks > 0 {
+                self.zones[zone_index.0].num_blocks -= 1;
+            }
+        } else {
+            error!("Got invalid pos: {:?}", pos);
         }
     }
 
     pub fn add_player_at_map_xy(&mut self, pos: MapPosition) {
-        let zone_index = self.map_to_zone_index(pos);
-        self.zones[zone_index.0].num_players += 1;
+        if let Some(zone_index) = self.map_to_zone_index(pos) {
+            self.zones[zone_index.0].num_players += 1;
+        } else {
+            error!("Got invalid pos: {:?}", pos);
+        }
     }
 
     pub fn clear_players(&mut self) {
@@ -168,14 +173,14 @@ impl WorldZoneData {
         &mut self.zones[index.0]
     }
 
-    pub fn get_zone_at(&self, zone_position: ZonePosition) -> &WorldZone {
-        let index = self.get_zone_index(zone_position);
-        self.get_zone_at_index(index)
+    pub fn get_zone_at(&self, zone_position: ZonePosition) -> Option<&WorldZone> {
+        self.get_zone_index(zone_position)
+            .map(|index| self.get_zone_at_index(index))
     }
 
-    pub fn get_zone_at_mut(&mut self, zone_position: ZonePosition) -> &mut WorldZone {
-        let index = self.get_zone_index(zone_position);
-        self.get_zone_at_index_mut(index)
+    pub fn get_zone_at_mut(&mut self, zone_position: ZonePosition) -> Option<&mut WorldZone> {
+        self.get_zone_index(zone_position)
+            .map(move |index| self.get_zone_at_index_mut(index))
     }
 
     pub fn zone_iter(&self) -> impl Iterator<Item = &WorldZone> {

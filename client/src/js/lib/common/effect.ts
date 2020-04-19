@@ -77,7 +77,7 @@ export class Effect {
                 target.speed += 50;
                 break;
             case EffectType.Invincibility: // end invincibility
-                target.delFlag(2);
+                target.delFlag(PlayerFlags.Invincible);
                 break;
             default:
                 // Unknown effect - just kill it immediately.

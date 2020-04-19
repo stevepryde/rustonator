@@ -12,7 +12,6 @@ use crate::{
         randenum::RandEnumFrom,
     },
 };
-use log::*;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
@@ -189,7 +188,7 @@ impl Default for Mob {
                 target_player: PlayerId::from(0),
                 target_dir: MobTargetDir::Up,
                 range: 8,
-                smart: true, // rand::thread_rng().gen_range(0, 10) > 7,
+                smart: rand::thread_rng().gen_range(0, 10) > 7,
                 danger: false,
             },
         }
@@ -292,8 +291,6 @@ impl Mob {
             self.server_data.old_position = map_pos;
             self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
         }
-
-        debug!("Mob new target: SERVER DATA {:?}", self.server_data);
     }
 
     fn update_action(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
@@ -378,7 +375,8 @@ impl Mob {
                     self.server_data.range * 2,
                 ) {
                     self.action.set(best.x, best.y, false);
-                }
+                } // Else we cannot find a path to a safe space! Probably
+                  // trapped by player.
             }
         }
 
@@ -387,7 +385,7 @@ impl Mob {
             if opportunistic && map_pos != self.server_data.old_position {
                 let new_dir = self.server_data.target_dir.clone() + da.clone();
                 let offset = new_dir.get_offset();
-                if self.can_pass_position(map_pos + offset, world) {
+                if self.can_pass(map_pos + offset, world) {
                     self.server_data.target_dir = new_dir;
                     self.server_data.old_position = map_pos;
                     self.action.set(offset.x, offset.y, false);
@@ -404,7 +402,7 @@ impl Mob {
                     self.position.y - (offset.y as f64 * halfth),
                 );
                 let target_map_pos = target_pos.to_map_position(world) + offset;
-                if self.can_pass_position(target_map_pos, world) {
+                if self.can_pass(target_map_pos, world) {
                     self.action.set(offset.x, offset.y, false);
                 } else {
                     // There is a block here but we cannot pass.
@@ -464,7 +462,7 @@ impl Mob {
         // Try X movement.
         if tmp_action.x() != 0 {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-            if !self.can_pass_position(try_pos, world) {
+            if !self.can_pass(try_pos, world) {
                 // Can't pass horizontally, so lock X position.
                 let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
                 if (tmp_action.x() < 0 && self.position.x <= target_x)
@@ -479,7 +477,7 @@ impl Mob {
         if tmp_action.y() != 0 {
             // Try Y movement.
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-            if !self.can_pass_position(try_pos, world) {
+            if !self.can_pass(try_pos, world) {
                 // Can't pass vertically, so lock Y position.
                 let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
                 if (tmp_action.y() < 0 && self.position.y <= target_y)
@@ -528,12 +526,19 @@ impl HasId<MobId> for Mob {
 }
 
 impl CanPass for Mob {
-    fn can_pass(&self, cell_type: CellType) -> bool {
-        match cell_type {
-            CellType::Wall => false,
-            CellType::Mystery => false,
-            CellType::Bomb => false,
-            _ => true,
+    fn can_pass(&self, position: MapPosition, world: &World) -> bool {
+        match world.get_cell(position) {
+            Some(CellType::Wall) | Some(CellType::Mystery) | Some(CellType::Bomb) => false,
+            _ => {
+                if !self.is_smart() {
+                    true
+                } else if !self.server_data.danger {
+                    // Check for danger!
+                    world.get_mob_data(position).is_none()
+                } else {
+                    true
+                }
+            }
         }
     }
 }

@@ -133,7 +133,7 @@ impl InternalWorldData {
 
 #[derive(Debug, Clone)]
 pub struct InternalMobData {
-    data: Vec<Timestamp>,
+    data: Vec<Option<Timestamp>>,
     width: i32,
     height: i32,
 }
@@ -141,7 +141,7 @@ pub struct InternalMobData {
 impl InternalMobData {
     pub fn new(width: i32, height: i32) -> Self {
         InternalMobData {
-            data: vec![Timestamp::zero(); (width * height) as usize],
+            data: vec![None; (width * height) as usize],
             width,
             height,
         }
@@ -155,11 +155,28 @@ impl InternalMobData {
         }
     }
 
-    pub fn get_at(&self, pos: MapPosition) -> Option<&Timestamp> {
-        self.get_index(pos).map(|index| &self.data[index])
+    pub fn get_at(&self, pos: MapPosition) -> Option<Timestamp> {
+        self.get_index(pos)
+            .map(|index| self.data[index])
+            .flatten()
+            .filter(|ts| !ts.is_past())
     }
 
-    pub fn set_at(&mut self, pos: MapPosition, value: Timestamp) {
+    pub fn get_at_fix(&mut self, pos: MapPosition) -> Option<Timestamp> {
+        let got = self.get_index(pos).map(|index| self.data[index]).flatten();
+        if let Some(ts) = got {
+            if ts.is_past() {
+                self.set_at(pos, None);
+                None
+            } else {
+                Some(ts)
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn set_at(&mut self, pos: MapPosition, value: Option<Timestamp>) {
         if let Some(index) = self.get_index(pos) {
             self.data[index] = value;
         }

@@ -42,19 +42,7 @@ impl RandEnumFrom<u8> for CellType {
 }
 
 pub trait CanPass {
-    fn can_pass(&self, _cell_type: CellType) -> bool {
-        false
-    }
-
-    fn can_pass_position(&self, position: MapPosition, world: &World) -> bool {
-        match world
-            .get_cell(position)
-            .map(|cell_type| self.can_pass(cell_type))
-        {
-            Some(true) | None => true,
-            Some(false) => false,
-        }
-    }
+    fn can_pass(&self, position: MapPosition, world: &World) -> bool;
 }
 
 #[cfg(test)]
