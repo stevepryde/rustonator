@@ -17,57 +17,29 @@ impl From<u64> for ExplosionId {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Explosion {
-    id: ExplosionId,
-    pid: PlayerId,
-    pname: String,
-    active: bool,
+    pub id: ExplosionId,
+    pub pid: PlayerId,
+    pub pname: String,
+    pub active: bool,
     #[serde(flatten)]
-    position: MapPosition,
-    remaining: f64,
-    harmful: bool,
-    timestamp: Timestamp,
+    pub position: MapPosition,
+    pub remaining: f64,
+    pub harmful: bool,
+    pub timestamp: Timestamp,
 }
 
 impl Explosion {
     pub fn new(bomb: Option<&Bomb>, position: MapPosition) -> Self {
         Explosion {
             id: ExplosionId::from(0),
-            pid: bomb.map_or(PlayerId::from(0), |x| x.pid()),
-            pname: bomb.map_or(String::new(), |x| x.pname().to_owned()),
+            pid: bomb.map_or(PlayerId::from(0), |x| x.pid),
+            pname: bomb.map_or(String::new(), |x| x.pname.clone()),
             active: true,
             position,
             remaining: 0.5,
             harmful: bomb.is_some(),
             timestamp: Timestamp::new(),
         }
-    }
-
-    pub fn id(&self) -> ExplosionId {
-        self.id
-    }
-
-    pub fn pid(&self) -> PlayerId {
-        self.pid
-    }
-
-    pub fn pname(&self) -> &String {
-        &self.pname
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
-    pub fn is_harmful(&self) -> bool {
-        self.harmful
-    }
-
-    pub fn position(&self) -> MapPosition {
-        self.position
-    }
-
-    pub fn timestamp(&self) -> Timestamp {
-        self.timestamp
     }
 
     pub fn update(&mut self, delta_time: f64) {
@@ -108,8 +80,8 @@ impl From<(Bomb, MapPosition)> for Explosion {
     fn from(bomb: (Bomb, MapPosition)) -> Self {
         Explosion {
             id: ExplosionId::from(0),
-            pid: bomb.0.pid(),
-            pname: bomb.0.pname().to_string(),
+            pid: bomb.0.pid,
+            pname: bomb.0.pname.clone(),
             active: true,
             position: bomb.1,
             remaining: 0.5,

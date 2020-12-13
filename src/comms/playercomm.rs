@@ -8,6 +8,7 @@ use crate::{
     error::{ZError, ZResult},
 };
 
+use crate::component::action::FrameData;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use tokio::{
@@ -39,7 +40,7 @@ impl MessageId {
 #[serde(rename_all = "UPPERCASE", tag = "code", content = "data")]
 pub enum PlayerMessage {
     JoinGame(String),
-    Action(Action),
+    Action(FrameData),
     SpawnPlayer(SerPlayer, SerWorldData),
     PowerUp(String),
     FrameData(serde_json::Value),

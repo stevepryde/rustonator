@@ -67,3 +67,14 @@ impl Action {
         self.delta_time = delta_time;
     }
 }
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct FrameData {
+    #[serde(rename = "frameId")]
+    frame_id: u32,
+    x1: f64,
+    y1: f64,
+    pub action: Action,
+    x2: f64,
+    y2: f64,
+}

@@ -6,12 +6,7 @@ use crate::{
         position::{MapPosition, PositionOffset, SizeInPixels, SizeInTiles},
         types::{BombList, ExplosionList, PlayerList},
         worlddata::{
-            InternalCellData,
-            InternalMobData,
-            InternalWorldData,
-            MobSpawner,
-            WorldChunk,
-            WorldData,
+            InternalCellData, InternalMobData, InternalWorldData, MobSpawner, WorldChunk, WorldData,
         },
         worldzone::WorldZoneData,
     },
@@ -331,8 +326,7 @@ impl World {
         pos: MapPosition,
         entities: &[MapPosition],
         range: i32,
-    ) -> bool
-    {
+    ) -> bool {
         entities.iter().any(|e| e.is_within_range(pos, range))
     }
 
@@ -433,7 +427,7 @@ impl World {
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb, bombs: &mut BombList) {
-        let pos = bomb.position();
+        let pos = bomb.position;
         let id = bombs.add(bomb);
         self.set_cell(pos, CellType::Bomb);
         self.update_bomb_path(id, &bombs);
@@ -441,7 +435,7 @@ impl World {
     }
 
     pub fn add_explosion(&mut self, explosion: Explosion, explosions: &mut ExplosionList) {
-        let pos = explosion.position();
+        let pos = explosion.position;
         let id = explosions.add(explosion);
         self.data_internal
             .set_at(pos, InternalCellData::Explosion(id));
@@ -452,12 +446,12 @@ impl World {
     }
 
     pub fn clear_explosion_cell(&mut self, explosion: &Explosion) {
-        let pos = explosion.position();
+        let pos = explosion.position;
         self.clear_internal_cell(pos);
 
         // Also let mobs know it's "safe" here now
         if let Some(ts) = self.data_mob.get_at(pos) {
-            if explosion.timestamp() >= ts {
+            if explosion.timestamp >= ts {
                 self.clear_mob_data(pos);
             }
         }
@@ -475,8 +469,8 @@ impl World {
         let mut seen: HashSet<MapPosition> = HashSet::new();
         let mut earliest_ts = match bombs.get(bid) {
             Some(b) => {
-                seen.insert(b.position());
-                b.timestamp()
+                seen.insert(b.position);
+                b.timestamp
             }
             None => {
                 return;
@@ -486,8 +480,8 @@ impl World {
 
         while let Some(bomb_id) = bombs_to_follow.pop_front() {
             if let Some(b) = bombs.get(bomb_id) {
-                if b.timestamp() < earliest_ts {
-                    earliest_ts = b.timestamp();
+                if b.timestamp < earliest_ts {
+                    earliest_ts = b.timestamp;
                 }
 
                 for offset in vec![
@@ -498,8 +492,8 @@ impl World {
                 ]
                 .into_iter()
                 {
-                    for dist in 1..=*b.range() {
-                        let pos = b.position() + (offset * dist as i32);
+                    for dist in 1..=*b.range {
+                        let pos = b.position + (offset * dist as i32);
                         if seen.contains(&pos) {
                             continue;
                         }
@@ -541,20 +535,19 @@ impl World {
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
         players: &mut PlayerList,
-    )
-    {
+    ) {
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
         bombs_to_explode.push_back(bomb_id);
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
             if let Some(b) = bombs.get_mut(bomb_id) {
-                if let Some(CellType::Bomb) = self.get_cell(b.position()) {
-                    self.set_cell(b.position(), CellType::Empty);
-                    self.clear_internal_cell(b.position());
+                if let Some(CellType::Bomb) = self.get_cell(b.position) {
+                    self.set_cell(b.position, CellType::Empty);
+                    self.clear_internal_cell(b.position);
                 }
 
                 let bombs_cascade = self.explode_bomb_path(b, explosions);
                 // Update player bomb count.
-                if let Some(p) = players.get_mut(&b.pid()) {
+                if let Some(p) = players.get_mut(&b.pid) {
                     p.bomb_exploded();
                 }
 
@@ -568,9 +561,8 @@ impl World {
         &mut self,
         bomb: &Bomb,
         explosions: &mut ExplosionList,
-    ) -> Vec<BombId>
-    {
-        self.add_explosion(Explosion::from((bomb.clone(), bomb.position())), explosions);
+    ) -> Vec<BombId> {
+        self.add_explosion(Explosion::from((bomb.clone(), bomb.position)), explosions);
 
         let mut bombs_cascade = Vec::new();
 
@@ -582,8 +574,8 @@ impl World {
         ]
         .into_iter()
         {
-            for dist in 1..=*bomb.range() {
-                let pos = bomb.position() + (offset * dist as i32);
+            for dist in 1..=*bomb.range {
+                let pos = bomb.position + (offset * dist as i32);
                 match self.get_cell(pos) {
                     // Explosions will in turn explode other bombs.
                     Some(CellType::Bomb) => {

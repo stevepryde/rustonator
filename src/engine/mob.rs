@@ -156,16 +156,16 @@ pub struct MobServerData {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Mob {
-    id: MobId,
-    active: bool,
+    pub id: MobId,
+    pub active: bool,
     #[serde(flatten)]
-    position: PixelPositionF64,
-    action: Action,
-    speed: f64,
-    image: String,
-    name: String,
+    pub position: PixelPositionF64,
+    pub action: Action,
+    pub speed: f64,
+    pub image: String,
+    pub name: String,
     #[serde(skip)]
-    server_data: MobServerData,
+    pub server_data: MobServerData,
 }
 
 impl Default for Mob {
@@ -200,20 +200,8 @@ impl Mob {
         Mob::default()
     }
 
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
     pub fn terminate(&mut self) {
         self.active = false;
-    }
-
-    pub fn position(&self) -> PixelPositionF64 {
-        self.position
-    }
-
-    pub fn set_position(&mut self, pos: PixelPositionF64) {
-        self.position = pos;
     }
 
     pub fn is_smart(&self) -> bool {
@@ -242,7 +230,7 @@ impl Mob {
         } else {
             self.server_data.target_mode = MobTargetMode::random();
         }
-        let map_pos = self.position().to_map_position(world);
+        let map_pos = self.position.to_map_position(world);
 
         let mut has_target = false;
         match self.server_data.target_mode {
@@ -256,11 +244,11 @@ impl Mob {
             }
             MobTargetMode::NearbyPlayer => {
                 for p in players.values() {
-                    if p.position()
+                    if p.position
                         .to_map_position(world)
                         .is_within_range(map_pos, self.server_data.range as i32)
                     {
-                        self.server_data.target_player = p.id();
+                        self.server_data.target_player = p.id;
                         self.server_data.target_remaining = thread_rng().gen_range(5.0, 120.0);
                         has_target = true;
                         break;
@@ -294,7 +282,7 @@ impl Mob {
     }
 
     fn update_action(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
-        let map_pos = self.position().to_map_position(world);
+        let map_pos = self.position.to_map_position(world);
         self.action.clear();
 
         let mut new_target = false;
@@ -329,7 +317,7 @@ impl Mob {
                         match world.path_find(
                             self,
                             map_pos,
-                            p.position().to_map_position(world),
+                            p.position.to_map_position(world),
                             self.server_data.range * 2,
                         ) {
                             Some(best) => {
@@ -433,15 +421,15 @@ impl Mob {
     }
 
     pub fn update(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
-        if !self.is_active() {
+        if !self.active {
             return;
         }
 
-        let map_pos = self.position().to_map_position(world);
+        let map_pos = self.position.to_map_position(world);
         if let Some(CellType::Wall) = world.get_cell(map_pos) {
             // Oops - we're in a wall. Reposition to nearby blank space.
             let blank = world.find_nearest_blank(map_pos);
-            self.set_position(PixelPositionF64::from_map_position(blank, world));
+            self.position = PixelPositionF64::from_map_position(blank, world);
         }
 
         // If we're in danger, do something about it.

@@ -16,7 +16,8 @@ import {EffectType} from "./common/effect";
 import {PlayerFlags} from "./common/playerflags";
 
 export const targetFPS = 30;
-const GAME_DEBUG = false;
+const GAME_DEBUG = true;
+const INPUT_LAG_MS = 200;
 
 let DEBUG_LOG: any = {};
 let FPS_COUNT: number = 0;
@@ -77,6 +78,15 @@ export interface PowerupData {
     text: string;
 }
 
+export interface FrameData {
+    frameId: number;
+    x1: number;
+    y1: number;
+    action: ActionData,
+    x2: number,
+    y2: number
+}
+
 //  The Google WebFont Loader will look for this object, so create it before loading the script.
 let WebFontConfig = {
     //  "active" means all requested fonts have finished loading
@@ -114,13 +124,16 @@ export class DetonatorGame {
 
     cameraset: boolean = false;
     totalPlayers: number = 0;
+    // Reference to current player (server values).
     curPlayer: Player | null = null;
-    curAction: ActionData | null = null;
+    // The current player on the client - separate from server.
+    clientPlayer: Player | null = null;
+    curAction: Action | null = null;
     isDead: boolean = false;
     deadCounter: number = targetFPS * 3; // wait for 3 seconds before exiting game.
     quitFlag: boolean = false;
     deadSprite: Phaser.Sprite | null = null;
-    actionList: ActionData[] = [];
+    frameList: FrameData[] = [];
     nextActionID: number = 0;
 
     lastClientMS: number = 0;
@@ -134,7 +147,7 @@ export class DetonatorGame {
     altkeys: KeyBindings | null = null; // Alternative keys.
     fireflag: boolean = false;
 
-    showGhost = false;
+    showGhost = true;
     tmpPlayer: Player | null = null;
 
     worldGroup: Phaser.Group | null = null;
@@ -277,6 +290,7 @@ export class DetonatorGame {
         this.altkeys = null;
         this.curAction = null;
         this.curPlayer = null;
+        this.clientPlayer = null;
 
         if (this.worldGroup) {
             this.worldGroup.destroy(true);
@@ -398,7 +412,7 @@ export class DetonatorGame {
             special: Phaser.KeyCode.ALT
         });
 
-        this.curAction = new Action().toJSON();
+        this.curAction = new Action();
 
         this.worldGroup = this.game.add.group();
         this.worldGroup.z = -100;
@@ -500,25 +514,18 @@ export class DetonatorGame {
 
         this.clientElapsedMS = this.curClientMS - this.lastClientMS;
 
-        if (!this.cameraset && this.curPlayer && this.curPlayer.id in this.playerSprites) {
-            this.game.camera.follow(this.playerSprites[this.curPlayer.id]);
+        if (!this.cameraset && this.clientPlayer && this.clientPlayer.id in this.playerSprites) {
+            this.game.camera.follow(this.playerSprites[this.clientPlayer.id]);
             this.cameraset = true;
-        }
-
-        if (!this.isDead) {
-            // client-side prediction.
-            this.clientSidePrediction();
         }
 
         this.handleTouch();
 
         if (this.clientElapsedMS >= this.minMS) {
-
-
             FPS_INPUT_COUNT++;
             this.lastClientMS = this.curClientMS;
             if (!this.curAction) {
-                this.curAction = new Action().toJSON();
+                this.curAction = new Action();
             }
 
             this.curAction.x = 0;
@@ -552,13 +559,33 @@ export class DetonatorGame {
             }
 
             // Only send command to server if we're still alive.
-            if (!this.isDead) {
+            if (!this.isDead && this.clientPlayer && !this.curAction.isEmpty()) {
                 // If we're lagging badly - don't send any input :(
                 // maximum 30 frames behind.
-                if (this.actionList.length < targetFPS) {
+                if (this.frameList.length < targetFPS) {
                     this.curAction.id = this.nextActionID++;
-                    this.socket_wrapper("ACTION", this.curAction);
-                    this.actionList.push(Object.assign({}, this.curAction));
+                    let actionData = this.curAction.toJSON();
+                    let x1 = this.clientPlayer.x;
+                    let y1 = this.clientPlayer.y;
+                    this.clientPlayer.action.fromJSON(actionData);
+                    this.movePlayer(this.clientPlayer);
+                    let frameData = {
+                        frameId: this.curAction.id,
+                        x1: x1,
+                        y1: y1,
+                        action: actionData,
+                        x2: this.clientPlayer.x,
+                        y2: this.clientPlayer.y
+                    };
+
+                    if (INPUT_LAG_MS > 0) {
+                        setTimeout(() => {
+                            this.socket_wrapper("ACTION", frameData);
+                        }, INPUT_LAG_MS);
+                    } else {
+                        this.socket_wrapper("ACTION", frameData);
+                    }
+                    this.frameList.push(frameData);
                 }
             }
         }
@@ -566,14 +593,14 @@ export class DetonatorGame {
         if (this.isDead) {
             // we're dead - so do the countdown.
             if (!this.deadSprite) {
-                if (this.curPlayer) {
-                    if (this.curPlayer.id in this.playerSprites) {
-                        this.deadSprite = this.playerSprites[this.curPlayer.id];
+                if (this.clientPlayer) {
+                    if (this.clientPlayer.id in this.playerSprites) {
+                        this.deadSprite = this.playerSprites[this.clientPlayer.id];
                     } else {
                         this.deadSprite = this.game.add.sprite(
-                            this.curPlayer.x,
-                            this.curPlayer.y,
-                            this.curPlayer.image,
+                            this.clientPlayer.x,
+                            this.clientPlayer.y,
+                            this.clientPlayer.image,
                             1
                         );
                         this.deadSprite.anchor.set(0.5);
@@ -599,6 +626,11 @@ export class DetonatorGame {
             if (this.deadCounter <= 0) {
                 this.quitFlag = true;
             }
+        }
+
+        if (!this.isDead) {
+            // client-side prediction.
+            this.clientSidePrediction();
         }
     }
 
@@ -642,11 +674,7 @@ export class DetonatorGame {
         let sx = sprite.x - this.game.camera.x;
         let sy = sprite.y - this.game.camera.y;
 
-        if (x >= sx && x < sx + sprite.width && y >= sy && y < sy + sprite.height) {
-            return true;
-        }
-
-        return false;
+        return x >= sx && x < sx + sprite.width && y >= sy && y < sy + sprite.height;
     }
 
     goFull(): void {
@@ -772,6 +800,8 @@ export class DetonatorGame {
         this.tmpPlayer = new Player();
         this.curPlayer = new Player();
         this.curPlayer.fromJSON(player);
+        this.clientPlayer = new Player();
+        Object.assign(this.clientPlayer, this.curPlayer);
     }
 
     playerDied(data: string): void {
@@ -787,7 +817,7 @@ export class DetonatorGame {
 
         let status: string;
 
-        if (!this.curPlayer) {
+        if (!this.clientPlayer || !this.curPlayer) {
             return;
         }
 
@@ -1465,7 +1495,7 @@ export class DetonatorGame {
     }
 
     clientSidePrediction(): void {
-        if (!this.curPlayer || !this.tmpPlayer) {
+        if (!this.curPlayer || !this.tmpPlayer || !this.clientPlayer) {
             return;
         }
 
@@ -1489,8 +1519,8 @@ export class DetonatorGame {
         if (this.playerSpriteServer) {
             if (this.showGhost) {
                 this.playerSpriteServer.visible = true;
-                this.playerSpriteServer.x = this.curPlayer.x;
-                this.playerSpriteServer.y = this.curPlayer.y;
+                this.playerSpriteServer.x = this.clientPlayer.x;
+                this.playerSpriteServer.y = this.clientPlayer.y;
                 this.playerSpriteServer.alpha = 0.4;
                 this.setSprite(this.playerSpriteServer, this.curPlayer.action);
             } else {
@@ -1502,18 +1532,19 @@ export class DetonatorGame {
         this.tmpPlayer.fromJSON(this.curPlayer.toJSON());
 
         // Remove actions that have already been processed.
-        this.actionList = this.actionList.filter((f) => {
-            return this.curPlayer && f.id > this.curPlayer.action.id;
+        this.frameList = this.frameList.filter((f) => {
+            return this.curPlayer && f.action.id > this.curPlayer.action.id;
         });
 
         // Replay client-side actions.
-        for (let i = 0; i < this.actionList.length; i++) {
-            this.tmpPlayer.action.fromJSON(this.actionList[i]);
+        for (let i = 0; i < this.frameList.length; i++) {
+            this.tmpPlayer.action.fromJSON(this.frameList[i].action);
             this.movePlayer(this.tmpPlayer);
         }
 
-        this.playerSprites[pid].x = this.tmpPlayer.x;
-        this.playerSprites[pid].y = this.tmpPlayer.y;
+        // Update sprint position.
+        this.playerSprites[pid].x = this.curPlayer.x;
+        this.playerSprites[pid].y = this.curPlayer.y;
 
         // Play animation according to direction.
         this.setSprite(this.playerSprites[pid], this.tmpPlayer.action);
@@ -1521,7 +1552,18 @@ export class DetonatorGame {
 
     movePlayer(player: Player): void {
         let deltaTime = 1.0 / targetFPS;
+        let tmpaction = {
+            x: player.action.x,
+            y: player.action.y,
+            deltaTime: player.action.deltaTime,
+            fire: false,
+            id: 0
+        };
 
+        this.constrainToGrid(player, tmpaction);
+    }
+
+    constrainToGrid(player: Player, tmpaction: ActionData) {
         // Move player.
         let mx = this.world.toMapX(player.x);
         let my = this.world.toMapY(player.y);
@@ -1532,15 +1574,6 @@ export class DetonatorGame {
             // reposition us.
             return;
         }
-
-        // Prevent illegal moves.
-        let tmpaction = {
-            x: player.action.x,
-            y: player.action.y,
-            deltaTime: player.action.deltaTime,
-            fire: false,
-            id: 0
-        };
 
         this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
 
@@ -1570,9 +1603,8 @@ export class DetonatorGame {
             }
         }
 
-        player.updateWithTempAction(tmpaction, tmpaction.deltaTime);
-
         this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
+        player.updateWithTempAction(tmpaction, tmpaction.deltaTime);
     }
 
     fixPositionAndTmpAction(player: Player, tmpaction: ActionData, mx: number, my: number, targetX: number, targetY: number) {

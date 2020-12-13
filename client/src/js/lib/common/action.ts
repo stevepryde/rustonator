@@ -34,7 +34,7 @@ export class Action {
   fromJSON(data: ActionData) {
     this.x = data.x;
     this.y = data.y;
-    this.fire = data.fire ? true : false;
+    this.fire = data.fire;
     this.id = data.id || 0;
     this.deltaTime = data.deltaTime;
   }
@@ -54,10 +54,10 @@ export class Action {
   }
 
   equals(obj: ActionData) {
-    if (this.x === obj.x && this.y === obj.y && this.fire === obj.fire) {
-      return true;
-    }
+    return this.x === obj.x && this.y === obj.y && this.fire === obj.fire;
+  }
 
-    return false;
+  isEmpty(): boolean {
+    return this.x === 0 && this.y === 0 && !this.fire;
   }
 }

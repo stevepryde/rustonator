@@ -1,3 +1,4 @@
+use crate::component::action::FrameData;
 use crate::{
     comms::playercomm::{PlayerComm, PlayerMessage},
     component::{
@@ -64,37 +65,39 @@ pub enum PlayerState {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
-    id: PlayerId,
-    active: bool,
+    pub id: PlayerId,
+    pub active: bool,
     #[serde(skip)]
-    state: PlayerState,
+    pub state: PlayerState,
     #[serde(flatten)]
-    position: PixelPositionF64,
-    action: Action,
-    speed: f64,
-    image: String,
-    range: BombRange,
-    bomb_time: BombTime,
-    max_bombs: u32,
-    cur_bombs: u32,
-    flags: PlayerFlagsList,
-    score: u32,
-    name: String,
-    rank: u32,
-    effects: Vec<Effect>,
+    pub position: PixelPositionF64,
+    pub action: Action,
+    pub speed: f64,
+    pub image: String,
+    pub range: BombRange,
+    pub bomb_time: BombTime,
+    pub max_bombs: u32,
+    pub cur_bombs: u32,
+    pub flags: PlayerFlagsList,
+    pub score: u32,
+    pub name: String,
+    pub rank: u32,
+    pub effects: Vec<Effect>,
     #[serde(skip)]
     effects_cache: Vec<Effect>,
     #[serde(skip)]
-    ws: PlayerComm,
+    pub ws: PlayerComm,
     #[serde(skip)]
-    kill_timer: f64,
+    pub kill_timer: f64,
+    #[serde(skip)]
+    pub frame_list: Vec<FrameData>,
 }
 
 impl Player {
     pub fn new(id: PlayerId, comm: PlayerComm) -> Self {
         Player {
             id,
-            active: false,
+            active: true,
             state: PlayerState::Joining,
             position: PixelPositionF64::new(0.0, 0.0),
             action: Action::new(),
@@ -112,15 +115,12 @@ impl Player {
             effects_cache: Vec::new(),
             ws: comm,
             kill_timer: 2.0,
+            frame_list: Vec::new(),
         }
     }
 
     pub fn ser(&self) -> ZResult<SerPlayer> {
         SerPlayer::try_from(self)
-    }
-
-    pub fn id(&self) -> PlayerId {
-        self.id
     }
 
     pub fn is_dead(&self) -> bool {
@@ -147,50 +147,6 @@ impl Player {
         }
     }
 
-    pub fn state(&self) -> &PlayerState {
-        &self.state
-    }
-
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    pub fn set_name(&mut self, name: &str) {
-        self.name = name.to_string();
-    }
-
-    pub fn position(&self) -> PixelPositionF64 {
-        self.position
-    }
-
-    pub fn position_mut(&mut self) -> &mut PixelPositionF64 {
-        &mut self.position
-    }
-
-    pub fn set_position(&mut self, pos: PixelPositionF64) {
-        self.position = pos;
-    }
-
-    pub fn action(&self) -> &Action {
-        &self.action
-    }
-
-    pub fn action_mut(&mut self) -> &mut Action {
-        &mut self.action
-    }
-
-    fn set_action(&mut self, action: Action) {
-        self.action = action;
-    }
-
-    pub fn speed(&self) -> f64 {
-        self.speed
-    }
-
-    pub fn score(&self) -> u32 {
-        self.score
-    }
-
     pub fn increase_score(&mut self, amount: u32) {
         self.score += amount;
     }
@@ -203,10 +159,6 @@ impl Player {
         }
     }
 
-    pub fn bomb_time(&self) -> BombTime {
-        self.bomb_time
-    }
-
     pub fn increase_bomb_time(&mut self) {
         self.bomb_time += 1.0;
     }
@@ -217,10 +169,6 @@ impl Player {
         }
     }
 
-    pub fn range(&self) -> BombRange {
-        self.range
-    }
-
     pub fn increase_range(&mut self) {
         self.range += 1;
     }
@@ -229,14 +177,6 @@ impl Player {
         if self.range > BombRange::from(1) {
             self.range -= 1;
         }
-    }
-
-    pub fn max_bombs(&self) -> u32 {
-        self.max_bombs
-    }
-
-    pub fn cur_bombs(&self) -> u32 {
-        self.cur_bombs
     }
 
     pub fn has_bomb_remaining(&self) -> bool {
@@ -261,10 +201,6 @@ impl Player {
         if self.max_bombs > 0 {
             self.max_bombs -= 1;
         }
-    }
-
-    pub fn ws(&mut self) -> &mut PlayerComm {
-        &mut self.ws
     }
 
     pub fn terminate(&mut self) {
@@ -367,31 +303,25 @@ impl Player {
         &mut self,
         world: &mut World,
         delta_time: f64,
-    ) -> ZResult<bool>
-    {
+    ) -> ZResult<bool> {
         if !self.has_joined() {
             return self.handle_player_join(world).await;
         }
 
         self.action.clear();
         match self.ws.recv_one().await {
-            Ok(None) => {
-                // No message waiting.
-                self.action.set_dt(0.0);
-                Ok(true)
-            }
-            Ok(Some(PlayerMessage::Action(mut a))) => {
-                a.set_dt(delta_time);
-                self.set_action(a);
+            Ok(None) => Ok(true),
+            Ok(Some(PlayerMessage::Action(f))) => {
+                self.frame_list.push(f);
                 Ok(true)
             }
             Ok(x) => {
-                error!("Player {:?} invalid message received: {:?}", self.id(), x);
+                error!("Player {:?} invalid message received: {:?}", self.id, x);
                 self.terminate();
                 Ok(false)
             }
             Err(e) => {
-                error!("Player {:?} error {:?}", self.id(), e);
+                error!("Player {:?} error {:?}", self.id, e);
                 self.terminate();
                 Ok(false)
             }
@@ -405,11 +335,11 @@ impl Player {
                 Ok(true)
             }
             Ok(Some(PlayerMessage::JoinGame(name))) => {
-                info!("Player {:?} is joining with name '{}'", self.id(), name);
-                self.set_name(&sanitise_name(&name));
+                info!("Player {:?} is joining with name '{}'", self.id, name);
+                self.name = sanitise_name(&name);
                 self.set_invincible();
                 let spawn_point = world.get_spawn_point();
-                self.set_position(PixelPositionF64::from_map_position(spawn_point, &world));
+                self.position = PixelPositionF64::from_map_position(spawn_point, &world);
 
                 let available_images = vec!["p1", "p2", "p3", "p4"];
                 self.image = (*available_images
@@ -418,7 +348,6 @@ impl Player {
                 .to_string();
 
                 self.state = PlayerState::Active;
-                self.active = true;
                 // Serialize here to avoid cloning both structures only to serialize later.
                 self.ws
                     .send(PlayerMessage::SpawnPlayer(self.ser()?, world.data().ser()?))
@@ -429,14 +358,13 @@ impl Player {
             Ok(x) => {
                 error!(
                     "Player {:?} invalid join message received: {:?}",
-                    self.id(),
-                    x
+                    self.id, x
                 );
                 self.terminate();
                 Ok(false)
             }
             Err(e) => {
-                error!("Player {:?} error {:?}", self.id(), e);
+                error!("Player {:?} error {:?}", self.id, e);
                 self.terminate();
                 Ok(false)
             }
@@ -447,12 +375,12 @@ impl Player {
         match item {
             CellType::ItemBomb => {
                 self.increase_max_bombs();
-                self.ws().send_powerup("+B").await?;
+                self.ws.send_powerup("+B").await?;
                 Ok(true)
             }
             CellType::ItemRange => {
                 self.increase_range();
-                self.ws().send_powerup("+R").await?;
+                self.ws.send_powerup("+R").await?;
                 Ok(true)
             }
             CellType::ItemRandom => {
@@ -460,25 +388,25 @@ impl Player {
                 let mut powerup_name = String::new();
                 match r {
                     0 => {
-                        if self.max_bombs() < 6 {
+                        if self.max_bombs < 6 {
                             self.increase_max_bombs();
                             powerup_name = "+B".to_owned();
                         }
                     }
                     1 => {
-                        if self.max_bombs() > 1 {
+                        if self.max_bombs > 1 {
                             self.decrease_max_bombs();
                             powerup_name = "-B".to_owned();
                         }
                     }
                     2 => {
-                        if self.range() < BombRange::from(8) {
+                        if self.range < BombRange::from(8) {
                             self.increase_range();
                             powerup_name = "+R".to_owned();
                         }
                     }
                     3 => {
-                        if self.range() > BombRange::from(1) {
+                        if self.range > BombRange::from(1) {
                             self.decrease_range();
                             powerup_name = "-R".to_owned();
                         }
@@ -493,19 +421,19 @@ impl Player {
                         }
                     }
                     5 => {
-                        if self.bomb_time() < BombTime::from(4.0) {
+                        if self.bomb_time < BombTime::from(4.0) {
                             self.increase_bomb_time();
                             powerup_name = "SB".to_owned();
                         }
                     }
                     6 => {
-                        if self.bomb_time() > BombTime::from(2.0) {
+                        if self.bomb_time > BombTime::from(2.0) {
                             self.decrease_bomb_time();
                             powerup_name = "FB".to_owned();
                         }
                     }
                     7 => {
-                        if self.score() > 100 {
+                        if self.score > 100 {
                             let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
                             self.decrease_score(pwrup);
                             powerup_name = "-$".to_owned();
@@ -523,7 +451,7 @@ impl Player {
                     powerup_name = self.add_random_effect();
                 }
 
-                self.ws().send_powerup(&powerup_name).await?;
+                self.ws.send_powerup(&powerup_name).await?;
                 Ok(true)
             }
             _ => Ok(false),
@@ -543,14 +471,14 @@ impl Player {
             return;
         }
 
-        let map_pos = self.position().to_map_position(&world);
+        let map_pos = self.position.to_map_position(&world);
         if let Some(CellType::Wall) = world.get_cell(map_pos) {
             // Oops - we're in a wall. Reposition to nearby blank space.
             let blank = world.find_nearest_blank(map_pos);
-            self.set_position(PixelPositionF64::from_map_position(blank, &world));
+            self.position = PixelPositionF64::from_map_position(blank, &world);
         }
 
-        let mut tmp_action = self.action().clone();
+        let mut tmp_action = self.action.clone();
         self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
 
         // Lock to gridlines.
@@ -558,23 +486,23 @@ impl Player {
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, &world).y;
-            if target_y > self.position().y + tolerance {
+            if target_y > self.position.y + tolerance {
                 tmp_action.setxy(0, 1);
-            } else if target_y < self.position().y - tolerance {
+            } else if target_y < self.position.y - tolerance {
                 tmp_action.setxy(0, -1);
             } else {
-                self.position_mut().y = target_y;
+                self.position.y = target_y;
                 tmp_action.setxy(tmp_action.x(), 0);
             }
         } else if tmp_action.y() != 0 {
             // Moving vertically, make sure we're on a gridline.
             let target_x = PixelPositionF64::from_map_position(map_pos, &world).x;
-            if target_x > self.position().x + tolerance {
+            if target_x > self.position.x + tolerance {
                 tmp_action.setxy(1, 0);
-            } else if target_x < self.position().x - tolerance {
+            } else if target_x < self.position.x - tolerance {
                 tmp_action.setxy(-1, 0);
             } else {
-                self.position_mut().x = target_x;
+                self.position.x = target_x;
                 tmp_action.setxy(0, tmp_action.y());
             }
         }
@@ -588,8 +516,7 @@ impl Player {
         tmp_action: &mut Action,
         map_pos: MapPosition,
         world: &World,
-    )
-    {
+    ) {
         // Try X movement.
         if tmp_action.x() != 0 {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);

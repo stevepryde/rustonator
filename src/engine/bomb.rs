@@ -134,58 +134,30 @@ impl SubAssign<Duration> for BombTime {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Bomb {
-    id: BombId,
-    pid: PlayerId,
-    pname: String,
-    active: bool,
+    pub id: BombId,
+    pub pid: PlayerId,
+    pub pname: String,
+    pub active: bool,
     #[serde(flatten)]
-    position: MapPosition,
-    remaining: BombTime,
-    range: BombRange,
-    timestamp: Timestamp,
+    pub position: MapPosition,
+    pub remaining: BombTime,
+    pub range: BombRange,
+    pub timestamp: Timestamp,
 }
 
 impl Bomb {
     pub fn new(player: &Player, position: MapPosition) -> Self {
         Bomb {
             id: BombId::from(0),
-            pid: player.id(),
-            pname: player.name().to_owned(),
+            pid: player.id,
+            pname: player.name.clone(),
             active: true,
             position,
-            remaining: player.bomb_time(),
-            range: player.range(),
+            remaining: player.bomb_time,
+            range: player.range,
             // Set the timestamp to the explosion timestamp
-            timestamp: Timestamp::new() + player.bomb_time(),
+            timestamp: Timestamp::new() + player.bomb_time,
         }
-    }
-
-    pub fn id(&self) -> BombId {
-        self.id
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
-    pub fn pid(&self) -> PlayerId {
-        self.pid
-    }
-
-    pub fn pname(&self) -> &str {
-        self.pname.as_str()
-    }
-
-    pub fn position(&self) -> MapPosition {
-        self.position
-    }
-
-    pub fn range(&self) -> BombRange {
-        self.range
-    }
-
-    pub fn timestamp(&self) -> Timestamp {
-        self.timestamp
     }
 
     pub fn tick(&mut self, delta_time: f64) -> bool {

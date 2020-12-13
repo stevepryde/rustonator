@@ -56,8 +56,7 @@ impl RustonatorGame {
     pub async fn game_loop(
         &mut self,
         mut player_join_rx: Receiver<PlayerConnectEvent>,
-    ) -> ZResult<()>
-    {
+    ) -> ZResult<()> {
         let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
 
         // Limit max FPS.
@@ -113,11 +112,11 @@ impl RustonatorGame {
                 let entities: Vec<MapPosition> = self
                     .players
                     .values()
-                    .map(|p| p.position().to_map_position(&self.world))
+                    .map(|p| p.position.to_map_position(&self.world))
                     .chain(
                         self.mobs
                             .iter()
-                            .map(|m| m.position().to_map_position(&self.world)),
+                            .map(|m| m.position.to_map_position(&self.world)),
                     )
                     .collect();
                 self.world.populate_blocks(&entities);
@@ -155,7 +154,7 @@ impl RustonatorGame {
         let mut quit = Vec::new();
         for p in self.players.values_mut() {
             if let Ok(false) | Err(_) = p.handle_player_input(&mut self.world, delta_time).await {
-                quit.push(p.id());
+                quit.push(p.id);
             }
         }
 
@@ -168,18 +167,18 @@ impl RustonatorGame {
         // Update remaining time for all bombs and explosions.
         for explosion in self.explosions.iter_mut() {
             explosion.update(delta_time);
-            if !explosion.is_active() {
+            if !explosion.active {
                 self.world.clear_explosion_cell(explosion);
             }
         }
 
-        self.explosions.retain(|_, e| e.is_active());
+        self.explosions.retain(|_, e| e.active);
 
         let mut explode_new = Vec::new();
         for bomb in self.bombs.iter_mut() {
             if bomb.tick(delta_time) {
                 // Bomb exploded.
-                explode_new.push(bomb.id());
+                explode_new.push(bomb.id);
             }
         }
 
@@ -192,7 +191,7 @@ impl RustonatorGame {
             );
         }
 
-        self.bombs.retain(|_, b| b.is_active());
+        self.bombs.retain(|_, b| b.active);
     }
 
     pub fn create_bomb_for_player(&mut self, player: &mut Player) {
@@ -200,7 +199,7 @@ impl RustonatorGame {
             return;
         }
 
-        let pos = player.position().to_map_position(&self.world);
+        let pos = player.position.to_map_position(&self.world);
         if let Some(CellType::Empty) = self.world.get_cell(pos) {
             let bomb = Bomb::new(player, pos);
             player.bomb_placed();
@@ -213,7 +212,7 @@ impl RustonatorGame {
         let mob_positions: Vec<MapPosition> = self
             .mobs
             .iter()
-            .map(|m| m.position().to_map_position(&self.world))
+            .map(|m| m.position.to_map_position(&self.world))
             .collect();
         let mut spawners = self.mob_spawners.clone();
         spawners.shuffle(&mut rand::thread_rng());
@@ -223,10 +222,7 @@ impl RustonatorGame {
                 .is_nearby_map_entity(spawner.position(), &mob_positions, 3)
             {
                 let mut mob = Mob::new();
-                mob.set_position(PixelPositionF64::from_map_position(
-                    spawner.position(),
-                    &self.world,
-                ));
+                mob.position = PixelPositionF64::from_map_position(spawner.position(), &self.world);
                 mob.choose_new_target(&self.world, &self.players);
                 self.mobs.add(mob);
                 break;
@@ -241,14 +237,14 @@ impl RustonatorGame {
             // Check if mob is dead.
             if let Some(InternalCellData::Explosion(explosion_id)) = self
                 .world
-                .get_internal_cell(mob.position().to_map_position(&self.world))
+                .get_internal_cell(mob.position.to_map_position(&self.world))
             {
                 if let Some(explosion) = self.explosions.get(*explosion_id) {
-                    if explosion.is_harmful() {
+                    if explosion.harmful {
                         mob.terminate();
 
                         // Award points to the player that killed this mob.
-                        if let Some(p) = self.players.get_mut(&explosion.pid()) {
+                        if let Some(p) = self.players.get_mut(&explosion.pid) {
                             if !p.is_dead() {
                                 if mob.is_smart() {
                                     p.increase_score(2000);
@@ -263,7 +259,7 @@ impl RustonatorGame {
         }
 
         // Remove dead mobs.
-        self.mobs.retain(|_, m| m.is_active());
+        self.mobs.retain(|_, m| m.active);
     }
 
     pub async fn game_process_players(&mut self, delta_time: f64) {
@@ -279,33 +275,38 @@ impl RustonatorGame {
                     continue;
                 }
             };
+            if player.frame_list.is_empty() {
+                player.action.clear();
+            } else {
+                let f = player.frame_list.remove(0);
+                // TODO: validate frame.
+                player.action = f.action;
+            }
 
-            if player.is_active() && player.action().fire() {
+            if player.is_active() && player.action.fire() {
                 self.create_bomb_for_player(&mut player);
 
                 // Prevent more bombs until the player releases fire.
-                player.action_mut().cease_fire();
+                player.action.cease_fire();
             }
 
             player.update(&self.world, delta_time);
             if let Err(e) = self.process_player_move(&mut player).await {
                 error!(
                     "Error processing move for player: {:?} ({}): {:?}",
-                    player.id(),
-                    player.name(),
-                    e
+                    player.id, player.name, e
                 );
                 player.terminate();
             }
 
             // Reinsert player.
-            self.players.insert(player.id(), player);
+            self.players.insert(player.id, player);
         }
 
         // Remove dead players.
         let mut futs = Vec::new();
         for p in self.players.values_mut().filter(|p| p.is_dead()) {
-            futs.push(Box::pin(p.ws().disconnect()));
+            futs.push(Box::pin(p.ws.disconnect()));
         }
         join_all(futs).await;
 
@@ -318,7 +319,7 @@ impl RustonatorGame {
 
         if player.is_active() {
             // Did we collect anything?
-            let map_pos = player.position().to_map_position(&self.world);
+            let map_pos = player.position.to_map_position(&self.world);
             match self.world.get_cell(map_pos) {
                 Some(CellType::Empty) | None => {}
                 Some(CellType::MobSpawner) => {
@@ -344,7 +345,7 @@ impl RustonatorGame {
                 // Mob?
                 let range = self.world.sizes().tile_size().width as f64 / 2.0;
                 for mob in self.mobs.iter() {
-                    if player.position().distance_to(mob.position()) <= range {
+                    if player.position.distance_to(mob.position) <= range {
                         // You ded.
                         died = true;
                         reason = if mob.is_smart() {
@@ -364,22 +365,21 @@ impl RustonatorGame {
                     self.world.get_internal_cell(map_pos)
                 {
                     if let Some(explosion) = self.explosions.get(*explosion_id) {
-                        if explosion.is_harmful() {
+                        if explosion.harmful {
                             died = true;
 
                             // Award points to the player that killed this mob.
-                            if explosion.pid() == player.id() {
+                            if explosion.pid == player.id {
                                 reason = String::from("Oops! You were killed by your own bomb");
-                            } else if let Some(p) = self.players.get_mut(&explosion.pid()) {
+                            } else if let Some(p) = self.players.get_mut(&explosion.pid) {
                                 if !p.is_dead() {
-                                    reason = format!("You were killed by '{}'", p.name());
+                                    reason = format!("You were killed by '{}'", p.name);
                                     p.increase_score(1000);
                                 } else {
-                                    let pname = explosion.pname();
-                                    let pname_str = if pname.is_empty() {
+                                    let pname_str = if explosion.pname.is_empty() {
                                         String::from("an unknown player")
                                     } else {
-                                        format!("'{}'", pname)
+                                        format!("'{}'", explosion.pname)
                                     };
 
                                     reason = format!(
@@ -406,27 +406,24 @@ impl RustonatorGame {
         if died {
             debug!(
                 "Player {:?} ({}, score {}) killed: {}",
-                player.id(),
-                player.name(),
-                player.score(),
-                reason
+                player.id, player.name, player.score, reason
             );
             player.terminate();
-            player.ws().send(PlayerMessage::Dead(reason)).await?;
+            player.ws.send(PlayerMessage::Dead(reason)).await?;
         }
 
         Ok(())
     }
 
     async fn send_data_to_player(&self, player: &mut Player) -> ZResult<()> {
-        let map_pos = player.position().to_map_position(&self.world);
+        let map_pos = player.position.to_map_position(&self.world);
         let chunkwidth = self.world.sizes().chunk_size().width;
         let chunkheight = self.world.sizes().chunk_size().height;
         let local_players: Vec<&Player> = self
             .players
             .values()
             .filter(|p| {
-                p.position().to_map_position(&self.world).is_within_grid(
+                p.position.to_map_position(&self.world).is_within_grid(
                     map_pos,
                     chunkwidth,
                     chunkheight,
@@ -438,7 +435,7 @@ impl RustonatorGame {
             .mobs
             .iter()
             .filter(|m| {
-                m.position().to_map_position(&self.world).is_within_grid(
+                m.position.to_map_position(&self.world).is_within_grid(
                     map_pos,
                     chunkwidth,
                     chunkheight,
@@ -449,19 +446,13 @@ impl RustonatorGame {
         let local_bombs: Vec<&Bomb> = self
             .bombs
             .iter()
-            .filter(|b| {
-                b.position()
-                    .is_within_grid(map_pos, chunkwidth, chunkheight)
-            })
+            .filter(|b| b.position.is_within_grid(map_pos, chunkwidth, chunkheight))
             .collect();
 
         let local_explosions: Vec<&Explosion> = self
             .explosions
             .iter()
-            .filter(|e| {
-                e.position()
-                    .is_within_grid(map_pos, chunkwidth, chunkheight)
-            })
+            .filter(|e| e.position.is_within_grid(map_pos, chunkwidth, chunkheight))
             .collect();
 
         let ser_data = serde_json::json!({
@@ -473,7 +464,7 @@ impl RustonatorGame {
             "explosions": local_explosions
         });
 
-        player.ws().send(PlayerMessage::FrameData(ser_data)).await?;
+        player.ws.send(PlayerMessage::FrameData(ser_data)).await?;
         Ok(())
     }
 }
