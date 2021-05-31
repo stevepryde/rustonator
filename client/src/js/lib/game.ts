@@ -80,11 +80,7 @@ export interface PowerupData {
 
 export interface FrameData {
     frameId: number;
-    x1: number;
-    y1: number;
     action: ActionData,
-    x2: number,
-    y2: number
 }
 
 //  The Google WebFont Loader will look for this object, so create it before loading the script.
@@ -128,7 +124,6 @@ export class DetonatorGame {
     curPlayer: Player | null = null;
     // The current player on the client - separate from server.
     clientPlayer: Player | null = null;
-    curAction: Action | null = null;
     isDead: boolean = false;
     deadCounter: number = targetFPS * 3; // wait for 3 seconds before exiting game.
     quitFlag: boolean = false;
@@ -288,7 +283,6 @@ export class DetonatorGame {
         this.cameraset = false;
         this.mykeys = null;
         this.altkeys = null;
-        this.curAction = null;
         this.curPlayer = null;
         this.clientPlayer = null;
 
@@ -412,8 +406,6 @@ export class DetonatorGame {
             special: Phaser.KeyCode.ALT
         });
 
-        this.curAction = new Action();
-
         this.worldGroup = this.game.add.group();
         this.worldGroup.z = -100;
 
@@ -524,30 +516,30 @@ export class DetonatorGame {
         if (this.clientElapsedMS >= this.minMS) {
             FPS_INPUT_COUNT++;
             this.lastClientMS = this.curClientMS;
-            if (!this.curAction) {
-                this.curAction = new Action();
-            }
-
-            this.curAction.x = 0;
-            this.curAction.y = 0;
-            this.curAction.fire = false;
-            this.curAction.deltaTime = 1.0 / targetFPS;
+            let curAction = new Action();
+            let isAction = false;
+            curAction.deltaTime = 1.0 / targetFPS;
             if (this.mykeys && this.altkeys) {
                 if (this.mykeys.left.isDown || this.altkeys.left.isDown || this.touchActions["left"]) {
-                    this.curAction.x -= 1;
+                    curAction.x -= 1;
+                    isAction = true;
                 }
                 if (this.mykeys.right.isDown || this.altkeys.right.isDown || this.touchActions["right"]) {
-                    this.curAction.x += 1;
+                    curAction.x += 1;
+                    isAction = true;
                 }
                 if (this.mykeys.up.isDown || this.altkeys.up.isDown || this.touchActions["up"]) {
-                    this.curAction.y -= 1;
+                    curAction.y -= 1;
+                    isAction = true;
                 }
                 if (this.mykeys.down.isDown || this.altkeys.down.isDown || this.touchActions["down"]) {
-                    this.curAction.y += 1;
+                    curAction.y += 1;
+                    isAction = true;
                 }
                 if (this.mykeys.fire.isDown || this.altkeys.fire.isDown || this.touchActions["bomb"]) {
                     if (!this.fireflag) {
-                        this.curAction.fire = true;
+                        curAction.fire = true;
+                        isAction = true;
 
                         // Force separate presses each time.
                         this.fireflag = true;
@@ -559,24 +551,17 @@ export class DetonatorGame {
             }
 
             // Only send command to server if we're still alive.
-            if (!this.isDead && this.clientPlayer && !this.curAction.isEmpty()) {
+            if (!this.isDead && this.clientPlayer && isAction) {
                 // If we're lagging badly - don't send any input :(
                 // maximum 30 frames behind.
                 if (this.frameList.length < targetFPS) {
-                    this.curAction.id = this.nextActionID++;
-                    let actionData = this.curAction.toJSON();
-                    let x1 = this.clientPlayer.x;
-                    let y1 = this.clientPlayer.y;
-                    this.clientPlayer.action.fromJSON(actionData);
-                    this.movePlayer(this.clientPlayer);
+                    curAction.id = this.nextActionID++;
+                    let actionData = curAction.toJSON();
                     let frameData = {
-                        frameId: this.curAction.id,
-                        x1: x1,
-                        y1: y1,
+                        frameId: curAction.id,
                         action: actionData,
-                        x2: this.clientPlayer.x,
-                        y2: this.clientPlayer.y
                     };
+                    this.frameList.push(frameData);
 
                     if (INPUT_LAG_MS > 0) {
                         setTimeout(() => {
@@ -585,7 +570,7 @@ export class DetonatorGame {
                     } else {
                         this.socket_wrapper("ACTION", frameData);
                     }
-                    this.frameList.push(frameData);
+
                 }
             }
         }
@@ -1260,23 +1245,23 @@ export class DetonatorGame {
                 if (this.curPlayer && pid === this.curPlayer.id) {
                     this.curPlayer.fromJSON(players[i]);
 
-                    // SHOW SERVER COPY.
-                    if (this.showGhost) {
-                        this.playerSpriteServer = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
-                        this.playerSpriteServer.anchor.set(0.5);
-
-                        this.playerSpriteServer.animations.add("down", [0, 1, 2, 1]);
-                        this.playerSpriteServer.animations.add("up", [3, 4, 5, 4]);
-
-                        // Even though left and right are the same, we need a different
-                        // label to differentiate between them.
-                        this.playerSpriteServer.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
-                        this.playerSpriteServer.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
-
-                        if (this.curPlayerGroup) {
-                            this.curPlayerGroup.add(this.playerSpriteServer);
-                        }
-                    }
+                    // // SHOW SERVER COPY.
+                    // if (this.showGhost) {
+                    //     this.playerSpriteServer = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                    //     this.playerSpriteServer.anchor.set(0.5);
+                    //
+                    //     this.playerSpriteServer.animations.add("down", [0, 1, 2, 1]);
+                    //     this.playerSpriteServer.animations.add("up", [3, 4, 5, 4]);
+                    //
+                    //     // Even though left and right are the same, we need a different
+                    //     // label to differentiate between them.
+                    //     this.playerSpriteServer.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
+                    //     this.playerSpriteServer.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
+                    //
+                    //     if (this.curPlayerGroup) {
+                    //         this.curPlayerGroup.add(this.playerSpriteServer);
+                    //     }
+                    // }
 
                     sprite = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
                     if (this.curPlayerGroup) {
@@ -1516,17 +1501,17 @@ export class DetonatorGame {
             return;
         }
 
-        if (this.playerSpriteServer) {
-            if (this.showGhost) {
-                this.playerSpriteServer.visible = true;
-                this.playerSpriteServer.x = this.clientPlayer.x;
-                this.playerSpriteServer.y = this.clientPlayer.y;
-                this.playerSpriteServer.alpha = 0.4;
-                this.setSprite(this.playerSpriteServer, this.curPlayer.action);
-            } else {
-                this.playerSpriteServer.visible = false;
-            }
-        }
+        // if (this.playerSpriteServer) {
+        //     if (this.showGhost) {
+        //         this.playerSpriteServer.visible = true;
+        //         this.playerSpriteServer.x = this.clientPlayer.x;
+        //         this.playerSpriteServer.y = this.clientPlayer.y;
+        //         this.playerSpriteServer.alpha = 0.4;
+        //         this.setSprite(this.playerSpriteServer, this.curPlayer.action);
+        //     } else {
+        //         this.playerSpriteServer.visible = false;
+        //     }
+        // }
 
         // Start with last known player position.
         this.tmpPlayer.fromJSON(this.curPlayer.toJSON());
@@ -1543,8 +1528,8 @@ export class DetonatorGame {
         }
 
         // Update sprint position.
-        this.playerSprites[pid].x = this.curPlayer.x;
-        this.playerSprites[pid].y = this.curPlayer.y;
+        this.playerSprites[pid].x = this.tmpPlayer.x;
+        this.playerSprites[pid].y = this.tmpPlayer.y;
 
         // Play animation according to direction.
         this.setSprite(this.playerSprites[pid], this.tmpPlayer.action);
