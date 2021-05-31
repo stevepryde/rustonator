@@ -59,6 +59,7 @@ impl RustonatorGame {
         // Limit max FPS.
         let fps = 30.0;
         let min_timeslice: f64 = 1.0 / fps;
+        let mut avg_delta: f64 = min_timeslice;
 
         let mut last_frame = Instant::now();
         let mut count: u64 = 0;
@@ -71,6 +72,7 @@ impl RustonatorGame {
 
         loop {
             let mut delta_time = last_frame.elapsed().as_secs_f64();
+            avg_delta = (avg_delta + delta_time) * 0.5;
             if delta_time < min_timeslice {
                 // Only allow new players if we have time.
 
@@ -124,7 +126,11 @@ impl RustonatorGame {
 
             let elapsed = first_frame.elapsed().as_secs_f64();
             if elapsed > 5.0 {
-                info!("FPS: {:.2}", count as f64 / elapsed);
+                info!(
+                    "FPS: {:.2} (avg delta time = {:.5})",
+                    count as f64 / elapsed,
+                    avg_delta
+                );
                 count = 0;
                 first_frame = Instant::now();
             }
