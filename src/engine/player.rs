@@ -290,7 +290,7 @@ impl Player {
     pub async fn handle_player_input(
         &mut self,
         world: &mut World,
-        delta_time: f64,
+        _delta_time: f64,
     ) -> ZResult<bool> {
         if !self.has_joined() {
             return self.handle_player_join(world).await;
