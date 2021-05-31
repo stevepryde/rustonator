@@ -113,8 +113,8 @@ impl MapPosition {
     pub fn random_offset(self, range: u32) -> Self {
         let irange = range as i32; // Don't worry, the range will always be small.
         Self {
-            x: self.x + thread_rng().gen_range(-irange, irange),
-            y: self.y + thread_rng().gen_range(-irange, irange),
+            x: self.x + thread_rng().gen_range(-irange..irange),
+            y: self.y + thread_rng().gen_range(-irange..irange),
         }
     }
 
@@ -151,7 +151,8 @@ pub struct PixelPosition<T: Serialize> {
 }
 
 impl<T: Serialize> PixelPosition<T>
-where T: From<f64> + Into<f64> + Copy
+where
+    T: From<f64> + Into<f64> + Copy,
 {
     pub fn new(x: T, y: T) -> Self {
         PixelPosition { x, y }
@@ -209,7 +210,9 @@ impl ChunkPosition {
     }
 
     pub fn from_pixel_position<T>(pos: PixelPosition<T>, world: &World) -> Self
-    where T: From<f64> + Into<f64> + Serialize + Copy {
+    where
+        T: From<f64> + Into<f64> + Serialize + Copy,
+    {
         ChunkPosition::from_map_position(pos.to_map_position(world), world)
     }
 

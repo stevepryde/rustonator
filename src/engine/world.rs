@@ -253,8 +253,8 @@ impl World {
 
     pub fn get_spawn_point(&self) -> MapPosition {
         for _ in 0..1000 {
-            let tx = rand::thread_rng().gen_range(0, self.sizes.map_size.width);
-            let ty = rand::thread_rng().gen_range(0, self.sizes.map_size.height);
+            let tx = rand::thread_rng().gen_range(0..self.sizes.map_size.width);
+            let ty = rand::thread_rng().gen_range(0..self.sizes.map_size.height);
             let pos = self.find_nearest_blank(MapPosition::new(tx, ty));
 
             let mut count = 0;
@@ -338,8 +338,8 @@ impl World {
                 break;
             }
 
-            let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
-            let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+            let bx = rand::thread_rng().gen_range(0..zone.size().width) + zone.position().x;
+            let by = rand::thread_rng().gen_range(0..zone.size().height) + zone.position().y;
             let blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
             // Avoid top left corner - it's the safe space for spawning players if no blank
@@ -364,8 +364,8 @@ impl World {
         let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter() {
             for _ in 0..zone.quota() {
-                let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
-                let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+                let bx = rand::thread_rng().gen_range(0..zone.size().width) + zone.position().x;
+                let by = rand::thread_rng().gen_range(0..zone.size().height) + zone.position().y;
                 let blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
                 // Avoid top left corner - it's the safe space for spawning players if no blank
@@ -407,8 +407,8 @@ impl World {
                 let mut blank = self.find_nearest_blank(MapPosition::new(mx, my));
                 if blank.x == 1 && blank.y == 1 {
                     // Try a random location.
-                    let bx = rand::thread_rng().gen_range(1, self.sizes.map_size.width - 2);
-                    let by = rand::thread_rng().gen_range(1, self.sizes.map_size.height - 2);
+                    let bx = rand::thread_rng().gen_range(1..self.sizes.map_size.width - 2);
+                    let by = rand::thread_rng().gen_range(1..self.sizes.map_size.height - 2);
                     blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
                     if blank.x == 1 && blank.y == 1 {

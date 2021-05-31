@@ -36,7 +36,6 @@ pub mod game {
 }
 
 use crate::comms::websocket::spawn_websocket_server;
-use tokio::sync::mpsc::channel;
 
 use crate::game::maingame::RustonatorGame;
 
@@ -44,7 +43,7 @@ use crate::game::maingame::RustonatorGame;
 async fn main() {
     init_logging();
 
-    let (player_join_tx, player_join_rx) = channel(30);
+    let (player_join_tx, player_join_rx) = std::sync::mpsc::channel();
 
     tokio::spawn(async {
         if let Err(e) = spawn_websocket_server(player_join_tx).await {

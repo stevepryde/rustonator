@@ -18,10 +18,7 @@ use futures::future::join_all;
 use log::*;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
-use tokio::{
-    sync::mpsc::Receiver,
-    time::{Duration, Instant},
-};
+use tokio::time::{Duration, Instant};
 
 pub struct RustonatorGame {
     width: u32,
@@ -55,7 +52,7 @@ impl RustonatorGame {
 
     pub async fn game_loop(
         &mut self,
-        mut player_join_rx: Receiver<PlayerConnectEvent>,
+        mut player_join_rx: std::sync::mpsc::Receiver<PlayerConnectEvent>,
     ) -> ZResult<()> {
         let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
 
@@ -70,7 +67,7 @@ impl RustonatorGame {
         let mut add_blocks_timer = Instant::now();
         let mut mob_spawn_timer = Instant::now();
 
-        let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
+        let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0..60.0);
 
         loop {
             let mut delta_time = last_frame.elapsed().as_secs_f64();
@@ -86,7 +83,7 @@ impl RustonatorGame {
 
                 delta_time = last_frame.elapsed().as_secs_f64();
                 let sleep_time = (min_timeslice - delta_time) * 1_000f64;
-                tokio::time::delay_for(Duration::from_millis(sleep_time as u64)).await;
+                tokio::time::sleep(Duration::from_millis(sleep_time as u64)).await;
                 delta_time = last_frame.elapsed().as_secs_f64();
             }
             last_frame = Instant::now();
@@ -104,7 +101,7 @@ impl RustonatorGame {
                 }
 
                 mob_spawn_timer = Instant::now();
-                next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
+                next_mob_spawn_seconds = thread_rng().gen_range(1.0..60.0);
             }
 
             // Add blocks?
@@ -134,7 +131,10 @@ impl RustonatorGame {
         }
     }
 
-    pub async fn player_connect_events(&mut self, players_rx: &mut Receiver<PlayerConnectEvent>) {
+    pub async fn player_connect_events(
+        &mut self,
+        players_rx: &mut std::sync::mpsc::Receiver<PlayerConnectEvent>,
+    ) {
         // Have any players joined?
         if let Ok(x) = players_rx.try_recv() {
             match x {

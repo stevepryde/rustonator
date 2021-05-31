@@ -1,6 +1,5 @@
 use crate::{
     comms::websocket::WsError,
-    component::action::Action,
     engine::{
         player::{PlayerId, SerPlayer},
         worlddata::SerWorldData,
@@ -11,13 +10,11 @@ use crate::{
 use crate::component::action::FrameData;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
-use tokio::{
-    sync::mpsc::{error::TryRecvError, Receiver, Sender},
-    time::Instant,
-};
+use std::sync::mpsc::TryRecvError;
+use tokio::time::Instant;
 
-pub type PlayerSender = Sender<PlayerMessageExternal>;
-pub type PlayerReceiver = Receiver<PlayerMessageExternal>;
+pub type PlayerSenderAsync = tokio::sync::mpsc::Sender<PlayerMessageExternal>;
+pub type PlayerReceiverSync = std::sync::mpsc::Receiver<PlayerMessageExternal>;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -75,13 +72,13 @@ impl PlayerMessageExternal {
 pub struct PlayerComm {
     id: PlayerId,
     uid: MessageId,
-    sender: PlayerSender,
-    receiver: PlayerReceiver,
+    sender: PlayerSenderAsync,
+    receiver: PlayerReceiverSync,
     last_seen: Instant,
 }
 
 impl PlayerComm {
-    pub fn new(id: PlayerId, sender: PlayerSender, receiver: PlayerReceiver) -> Self {
+    pub fn new(id: PlayerId, sender: PlayerSenderAsync, receiver: PlayerReceiverSync) -> Self {
         PlayerComm {
             id,
             uid: MessageId(0),

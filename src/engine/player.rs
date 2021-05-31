@@ -124,27 +124,15 @@ impl Player {
     }
 
     pub fn is_dead(&self) -> bool {
-        if let PlayerState::Dead = self.state {
-            true
-        } else {
-            false
-        }
+        matches!(self.state, PlayerState::Dead)
     }
 
     pub fn is_active(&self) -> bool {
-        if let PlayerState::Active = self.state {
-            true
-        } else {
-            false
-        }
+        matches!(self.state, PlayerState::Active)
     }
 
     pub fn has_joined(&self) -> bool {
-        if let PlayerState::Joining = self.state {
-            false
-        } else {
-            true
-        }
+        !matches!(self.state, PlayerState::Joining)
     }
 
     pub fn increase_score(&mut self, amount: u32) {
@@ -287,7 +275,7 @@ impl Player {
     pub fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
-            rand::thread_rng().gen_range(3.0f64, 10.0f64),
+            rand::thread_rng().gen_range(3.0f64..10.0f64),
         );
         let name = effect.name();
         self.add_effect(effect);
@@ -384,7 +372,7 @@ impl Player {
                 Ok(true)
             }
             CellType::ItemRandom => {
-                let r: u8 = rand::thread_rng().gen_range(0, 10);
+                let r: u8 = rand::thread_rng().gen_range(0..10);
                 let mut powerup_name = String::new();
                 match r {
                     0 => {
@@ -434,13 +422,13 @@ impl Player {
                     }
                     7 => {
                         if self.score > 100 {
-                            let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                            let pwrup: u32 = rand::thread_rng().gen_range(1..10) * 10;
                             self.decrease_score(pwrup);
                             powerup_name = "-$".to_owned();
                         }
                     }
                     8 => {
-                        let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                        let pwrup: u32 = rand::thread_rng().gen_range(1..10) * 10;
                         self.increase_score(pwrup);
                         powerup_name = "+$".to_owned();
                     }

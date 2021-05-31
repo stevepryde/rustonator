@@ -9,14 +9,14 @@ chrono = "0.4"
 futures = "0.3"
 itertools = "0.8"
 log = "0.4"
-rand = "0.7"
+rand = "0.8"
 serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 serde_repr = "0.1"
-tungstenite = "0.10"
-tokio-tungstenite = "0.10"
-fern = "0.5"
-tokio = { version = "0.2", features = ["full"]}
+tungstenite = "0.13"
+tokio-tungstenite = "0.14"
+fern = "0.6"
+tokio = { version = "1.0", features = ["full"]}
 regex = "1"
 
 ## Flamegraph profiling
