@@ -1,3 +1,8 @@
+/*
+    TODO: implement interpolation and extrapolation for other players and enemies
+
+ */
+
 import "pixi";
 import "p2";
 
