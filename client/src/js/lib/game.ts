@@ -122,8 +122,6 @@ export class DetonatorGame {
     totalPlayers: number = 0;
     // Reference to current player (server values).
     curPlayer: Player | null = null;
-    // The current player on the client - separate from server.
-    clientPlayer: Player | null = null;
     isDead: boolean = false;
     deadCounter: number = targetFPS * 3; // wait for 3 seconds before exiting game.
     quitFlag: boolean = false;
@@ -144,6 +142,8 @@ export class DetonatorGame {
 
     showGhost = true;
     tmpPlayer: Player | null = null;
+    prevPlayerX: number = 0.0;
+    prevPlayerY: number = 0.0;
 
     worldGroup: Phaser.Group | null = null;
     playerGroup: Phaser.Group | null = null;
@@ -284,7 +284,6 @@ export class DetonatorGame {
         this.mykeys = null;
         this.altkeys = null;
         this.curPlayer = null;
-        this.clientPlayer = null;
 
         if (this.worldGroup) {
             this.worldGroup.destroy(true);
@@ -506,8 +505,8 @@ export class DetonatorGame {
 
         this.clientElapsedMS = this.curClientMS - this.lastClientMS;
 
-        if (!this.cameraset && this.clientPlayer && this.clientPlayer.id in this.playerSprites) {
-            this.game.camera.follow(this.playerSprites[this.clientPlayer.id]);
+        if (!this.cameraset && this.curPlayer && this.curPlayer.id in this.playerSprites) {
+            this.game.camera.follow(this.playerSprites[this.curPlayer.id]);
             this.cameraset = true;
         }
 
@@ -551,7 +550,7 @@ export class DetonatorGame {
             }
 
             // Only send command to server if we're still alive.
-            if (!this.isDead && this.clientPlayer && isAction) {
+            if (!this.isDead && this.curPlayer && isAction) {
                 // If we're lagging badly - don't send any input :(
                 // maximum 30 frames behind.
                 if (this.frameList.length < targetFPS) {
@@ -578,14 +577,14 @@ export class DetonatorGame {
         if (this.isDead) {
             // we're dead - so do the countdown.
             if (!this.deadSprite) {
-                if (this.clientPlayer) {
-                    if (this.clientPlayer.id in this.playerSprites) {
-                        this.deadSprite = this.playerSprites[this.clientPlayer.id];
+                if (this.curPlayer) {
+                    if (this.curPlayer.id in this.playerSprites) {
+                        this.deadSprite = this.playerSprites[this.curPlayer.id];
                     } else {
                         this.deadSprite = this.game.add.sprite(
-                            this.clientPlayer.x,
-                            this.clientPlayer.y,
-                            this.clientPlayer.image,
+                            this.curPlayer.x,
+                            this.curPlayer.y,
+                            this.curPlayer.image,
                             1
                         );
                         this.deadSprite.anchor.set(0.5);
@@ -785,8 +784,8 @@ export class DetonatorGame {
         this.tmpPlayer = new Player();
         this.curPlayer = new Player();
         this.curPlayer.fromJSON(player);
-        this.clientPlayer = new Player();
-        Object.assign(this.clientPlayer, this.curPlayer);
+        this.prevPlayerX = this.curPlayer.x;
+        this.prevPlayerY = this.curPlayer.y;
     }
 
     playerDied(data: string): void {
@@ -802,7 +801,7 @@ export class DetonatorGame {
 
         let status: string;
 
-        if (!this.clientPlayer || !this.curPlayer) {
+        if (!this.curPlayer) {
             return;
         }
 
@@ -1246,22 +1245,22 @@ export class DetonatorGame {
                     this.curPlayer.fromJSON(players[i]);
 
                     // // SHOW SERVER COPY.
-                    // if (this.showGhost) {
-                    //     this.playerSpriteServer = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
-                    //     this.playerSpriteServer.anchor.set(0.5);
-                    //
-                    //     this.playerSpriteServer.animations.add("down", [0, 1, 2, 1]);
-                    //     this.playerSpriteServer.animations.add("up", [3, 4, 5, 4]);
-                    //
-                    //     // Even though left and right are the same, we need a different
-                    //     // label to differentiate between them.
-                    //     this.playerSpriteServer.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
-                    //     this.playerSpriteServer.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
-                    //
-                    //     if (this.curPlayerGroup) {
-                    //         this.curPlayerGroup.add(this.playerSpriteServer);
-                    //     }
-                    // }
+                    if (this.showGhost) {
+                        this.playerSpriteServer = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                        this.playerSpriteServer.anchor.set(0.5);
+
+                        this.playerSpriteServer.animations.add("down", [0, 1, 2, 1]);
+                        this.playerSpriteServer.animations.add("up", [3, 4, 5, 4]);
+
+                        // Even though left and right are the same, we need a different
+                        // label to differentiate between them.
+                        this.playerSpriteServer.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
+                        this.playerSpriteServer.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
+
+                        if (this.curPlayerGroup) {
+                            this.curPlayerGroup.add(this.playerSpriteServer);
+                        }
+                    }
 
                     sprite = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
                     if (this.curPlayerGroup) {
@@ -1480,7 +1479,7 @@ export class DetonatorGame {
     }
 
     clientSidePrediction(): void {
-        if (!this.curPlayer || !this.tmpPlayer || !this.clientPlayer) {
+        if (!this.curPlayer || !this.tmpPlayer) {
             return;
         }
 
@@ -1501,17 +1500,17 @@ export class DetonatorGame {
             return;
         }
 
-        // if (this.playerSpriteServer) {
-        //     if (this.showGhost) {
-        //         this.playerSpriteServer.visible = true;
-        //         this.playerSpriteServer.x = this.clientPlayer.x;
-        //         this.playerSpriteServer.y = this.clientPlayer.y;
-        //         this.playerSpriteServer.alpha = 0.4;
-        //         this.setSprite(this.playerSpriteServer, this.curPlayer.action);
-        //     } else {
-        //         this.playerSpriteServer.visible = false;
-        //     }
-        // }
+        if (this.playerSpriteServer) {
+            if (this.showGhost) {
+                this.playerSpriteServer.visible = true;
+                this.playerSpriteServer.x = this.curPlayer.x;
+                this.playerSpriteServer.y = this.curPlayer.y;
+                this.playerSpriteServer.alpha = 0.4;
+                this.setSprite(this.playerSpriteServer, this.curPlayer.action);
+            } else {
+                this.playerSpriteServer.visible = false;
+            }
+        }
 
         // Start with last known player position.
         this.tmpPlayer.fromJSON(this.curPlayer.toJSON());
@@ -1527,9 +1526,13 @@ export class DetonatorGame {
             this.movePlayer(this.tmpPlayer);
         }
 
-        // Update sprint position.
-        this.playerSprites[pid].x = this.tmpPlayer.x;
-        this.playerSprites[pid].y = this.tmpPlayer.y;
+        // Update sprite position. Also smooth out player movement.
+        let deltaX = this.tmpPlayer.x - this.prevPlayerX;
+        let deltaY = this.tmpPlayer.y - this.prevPlayerY;
+        this.prevPlayerX = this.prevPlayerX + (deltaX * 0.3);
+        this.prevPlayerY = this.prevPlayerY + (deltaY * 0.3);
+        this.playerSprites[pid].x = this.prevPlayerX;
+        this.playerSprites[pid].y = this.prevPlayerY;
 
         // Play animation according to direction.
         this.setSprite(this.playerSprites[pid], this.tmpPlayer.action);
