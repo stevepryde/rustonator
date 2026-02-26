@@ -18,8 +18,8 @@ use crate::{
     traits::celltypes::{CanPass, CellType},
     utils::misc::Timestamp,
 };
-use log::*;
-use rand::Rng;
+use rand::prelude::*;
+use tracing::error;
 use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
 
@@ -258,8 +258,8 @@ impl World {
 
     pub fn get_spawn_point(&self) -> MapPosition {
         for _ in 0..1000 {
-            let tx = rand::thread_rng().gen_range(0, self.sizes.map_size.width);
-            let ty = rand::thread_rng().gen_range(0, self.sizes.map_size.height);
+            let tx = rand::rng().random_range(0..self.sizes.map_size.width);
+            let ty = rand::rng().random_range(0..self.sizes.map_size.height);
             let pos = self.find_nearest_blank(MapPosition::new(tx, ty));
 
             let mut count = 0;
@@ -311,7 +311,7 @@ impl World {
         );
 
         let mut index_read = self.get_index(MapPosition::new(topleft.x, topleft.y));
-        let mut index_write = 0 as usize;
+        let mut index_write = 0_usize;
         for _ in 0..self.sizes.chunk_size.height {
             chunk.set_slice(
                 index_write,
@@ -344,8 +344,8 @@ impl World {
                 break;
             }
 
-            let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
-            let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+            let bx = rand::rng().random_range(0..zone.size().width) + zone.position().x;
+            let by = rand::rng().random_range(0..zone.size().height) + zone.position().y;
             let blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
             // Avoid top left corner - it's the safe space for spawning players if no blank
@@ -370,8 +370,8 @@ impl World {
         let mut new_blocks = HashSet::new();
         for zone in self.zones.zone_iter() {
             for _ in 0..zone.quota() {
-                let bx = rand::thread_rng().gen_range(0, zone.size().width) + zone.position().x;
-                let by = rand::thread_rng().gen_range(0, zone.size().height) + zone.position().y;
+                let bx = rand::rng().random_range(0..zone.size().width) + zone.position().x;
+                let by = rand::rng().random_range(0..zone.size().height) + zone.position().y;
                 let blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
                 // Avoid top left corner - it's the safe space for spawning players if no blank
@@ -413,8 +413,8 @@ impl World {
                 let mut blank = self.find_nearest_blank(MapPosition::new(mx, my));
                 if blank.x == 1 && blank.y == 1 {
                     // Try a random location.
-                    let bx = rand::thread_rng().gen_range(1, self.sizes.map_size.width - 2);
-                    let by = rand::thread_rng().gen_range(1, self.sizes.map_size.height - 2);
+                    let bx = rand::rng().random_range(1..self.sizes.map_size.width - 2);
+                    let by = rand::rng().random_range(1..self.sizes.map_size.height - 2);
                     blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
                     if blank.x == 1 && blank.y == 1 {
@@ -436,7 +436,7 @@ impl World {
         let pos = bomb.position();
         let id = bombs.add(bomb);
         self.set_cell(pos, CellType::Bomb);
-        self.update_bomb_path(id, &bombs);
+        self.update_bomb_path(id, bombs);
         self.data_internal.set_at(pos, InternalCellData::Bomb(id));
     }
 
@@ -456,11 +456,10 @@ impl World {
         self.clear_internal_cell(pos);
 
         // Also let mobs know it's "safe" here now
-        if let Some(ts) = self.data_mob.get_at(pos) {
-            if explosion.timestamp() >= ts {
+        if let Some(ts) = self.data_mob.get_at(pos)
+            && explosion.timestamp() >= ts {
                 self.clear_mob_data(pos);
             }
-        }
     }
 
     /// This will walk the entire bomb path, collecting the soonest explosion
@@ -611,7 +610,7 @@ impl World {
                     // The following will block an explosion, so stop.
                     Some(CellType::Mystery) => {
                         // This will become a powerup item.
-                        let r: f64 = rand::thread_rng().gen();
+                        let r: f64 = rand::random();
                         let item = if r > 0.9 {
                             // 10% chance.
                             CellType::ItemBomb
@@ -677,7 +676,7 @@ impl World {
         let pos = pf.position;
         let mut possible_moves = Vec::new();
         for m in &[pos.up(1), pos.right(1), pos.down(1), pos.left(1)] {
-            if seen.contains(&m) {
+            if seen.contains(m) {
                 continue;
             }
 

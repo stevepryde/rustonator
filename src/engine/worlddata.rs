@@ -5,8 +5,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::convert::TryFrom;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SerWorldData(Value);
@@ -157,13 +155,12 @@ impl InternalMobData {
 
     pub fn get_at(&self, pos: MapPosition) -> Option<Timestamp> {
         self.get_index(pos)
-            .map(|index| self.data[index])
-            .flatten()
+            .and_then(|index| self.data[index])
             .filter(|ts| !ts.is_past())
     }
 
     pub fn get_at_fix(&mut self, pos: MapPosition) -> Option<Timestamp> {
-        let got = self.get_index(pos).map(|index| self.data[index]).flatten();
+        let got = self.get_index(pos).and_then(|index| self.data[index]);
         if let Some(ts) = got {
             if ts.is_past() {
                 self.set_at(pos, None);

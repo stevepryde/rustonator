@@ -1,7 +1,4 @@
-import "pixi";
-import "p2";
-
-import Phaser from "phaser-ce";
+import Phaser from "phaser";
 import {IMG_PREFIX, setElementDisplay, WebUIManager, withElement} from "./web";
 import GameConfig from "./common/config";
 import {Player, PlayerData} from "./common/player";
@@ -56,17 +53,13 @@ interface TouchActions {
     bomb: boolean;
 }
 
-interface KeyBindingProperty {
-    isDown(): boolean;
-}
-
 interface KeyBindings {
-    up: KeyBindingProperty;
-    down: KeyBindingProperty;
-    left: KeyBindingProperty;
-    right: KeyBindingProperty;
-    fire: KeyBindingProperty;
-    special: KeyBindingProperty;
+    up: Phaser.Input.Keyboard.Key;
+    down: Phaser.Input.Keyboard.Key;
+    left: Phaser.Input.Keyboard.Key;
+    right: Phaser.Input.Keyboard.Key;
+    fire: Phaser.Input.Keyboard.Key;
+    special: Phaser.Input.Keyboard.Key;
 }
 
 export interface DeadData {
@@ -79,36 +72,40 @@ export interface PowerupData {
 
 //  The Google WebFont Loader will look for this object, so create it before loading the script.
 let WebFontConfig = {
-    //  "active" means all requested fonts have finished loading
-    //  We set a 1 second delay before calling "createText".
-    //  For some reason if we don't the browser cannot render the text the first time it's created.
-    // active: function() {
-    //   if (game) {
-    //     game.time.events.add(Phaser.Timer.SECOND, createText, this);
-    //   }
-    // },
-
     //  The Google Fonts we want to load (specify as many as you like in the array)
     google: {
         families: ["Raleway"]
     }
 };
 
-export class DetonatorGame {
-    uiManager: WebUIManager;
-    stateMachine: StateMachine;
-    playerName: string;
+/** Depth constants to replace Phaser CE group z-ordering. */
+const DEPTH = {
+    WORLD: -100,
+    BOMB: 10,
+    PLAYER: 20,
+    CUR_PLAYER: 30,
+    MOB: 35,
+    EXPLOSION: 40,
+    POWERUP: 50,
+    SHADE: 90,
+    CONTROLS: 100
+};
+
+export class DetonatorGame extends Phaser.Scene {
+    uiManager!: WebUIManager;
+    stateMachine!: StateMachine;
+    playerName!: string;
     gameState: GameState = GameState.Menu;
-    game: Phaser.Game | null = null;
-    canvasInfo: CanvasInfo;
+    phaserGame: Phaser.Game | null = null;
+    canvasInfo!: CanvasInfo;
 
     socket: WebSocket | null = null;
 
     lagCounter: number = 0;
     pingSent: boolean = false;
 
-    world: World;
-    worldSprites: (Phaser.Image | null)[] = [];
+    world!: World;
+    worldSprites: (Phaser.GameObjects.Image | null)[] = [];
     lastTX: number = 0;
     lastTY: number = 0;
 
@@ -119,7 +116,7 @@ export class DetonatorGame {
     isDead: boolean = false;
     deadCounter: number = targetFPS * 3; // wait for 3 seconds before exiting game.
     quitFlag: boolean = false;
-    deadSprite: Phaser.Sprite | null = null;
+    deadSprite: Phaser.GameObjects.Sprite | null = null;
     actionList: ActionData[] = [];
     nextActionID: number = 0;
 
@@ -128,7 +125,7 @@ export class DetonatorGame {
     clientElapsedMS: number = 0;
     minMS: number = 1000 / targetFPS;
     deadReason: string = "";
-    touchActions: TouchActions;
+    touchActions!: TouchActions;
 
     mykeys: KeyBindings | null = null; // Main keys.
     altkeys: KeyBindings | null = null; // Alternative keys.
@@ -137,23 +134,23 @@ export class DetonatorGame {
     showGhost = false;
     tmpPlayer: Player | null = null;
 
-    worldGroup: Phaser.Group | null = null;
-    playerGroup: Phaser.Group | null = null;
-    curPlayerGroup: Phaser.Group | null = null;
-    mobGroup: Phaser.Group | null = null;
-    bombGroup: Phaser.Group | null = null;
-    explosionGroup: Phaser.Group | null = null;
-    powerupGroup: Phaser.Group | null = null;
-    shadeGroup: Phaser.Group | null = null;
-    controlsGroup: Phaser.Group | null = null;
-    controlSprites: { [x: string]: Phaser.Sprite } = {};
-    playerSprites: { [x: string]: Phaser.Sprite } = {};
-    mobSprites: { [x: string]: Phaser.Sprite } = {};
-    bombSprites: { [x: string]: Phaser.Image } = {};
-    explosionEmitters: { [x: string]: Phaser.Particles.Arcade.Emitter } = {};
-    powerupSprites: Phaser.Text[] = [];
-    playerNames: { [x: string]: Phaser.Text } = {};
-    playerSpriteServer: Phaser.Sprite | null = null;
+    worldGroup: Phaser.GameObjects.Group | null = null;
+    playerGroup: Phaser.GameObjects.Group | null = null;
+    curPlayerGroup: Phaser.GameObjects.Group | null = null;
+    mobGroup: Phaser.GameObjects.Group | null = null;
+    bombGroup: Phaser.GameObjects.Group | null = null;
+    explosionGroup: Phaser.GameObjects.Group | null = null;
+    powerupGroup: Phaser.GameObjects.Group | null = null;
+    shadeGroup: Phaser.GameObjects.Group | null = null;
+    controlsGroup: Phaser.GameObjects.Group | null = null;
+    controlSprites: { [x: string]: Phaser.GameObjects.Sprite } = {};
+    playerSprites: { [x: string]: Phaser.GameObjects.Sprite } = {};
+    mobSprites: { [x: string]: Phaser.GameObjects.Sprite } = {};
+    bombSprites: { [x: string]: Phaser.GameObjects.Sprite } = {};
+    explosionEmitters: { [x: string]: Phaser.GameObjects.Particles.ParticleEmitter } = {};
+    powerupSprites: Phaser.GameObjects.Text[] = [];
+    playerNames: { [x: string]: Phaser.GameObjects.Text } = {};
+    playerSpriteServer: Phaser.GameObjects.Sprite | null = null;
     knownPlayers = new ObjectPool<Player>();
     knownMobs = new ObjectPool<Mob>();
     knownBombs = new ObjectPool<BombData>();
@@ -165,13 +162,15 @@ export class DetonatorGame {
     touchEnabled: boolean = false;
     playerStatsDisplayed: boolean = false;
     iconDisplayed: boolean = false;
-    leaderboardNames: Phaser.Text[] = [];
-    leaderboardScores: Phaser.Text[] = [];
-    leaderboardShade: Phaser.Image | null = null;
-    scoreShade: Phaser.Image | null = null;
-    scoreText: Phaser.Text | null = null;
+    leaderboardNames: Phaser.GameObjects.Text[] = [];
+    leaderboardScores: Phaser.GameObjects.Text[] = [];
+    leaderboardShade: Phaser.GameObjects.Image | null = null;
+    scoreShade: Phaser.GameObjects.Image | null = null;
+    scoreText: Phaser.GameObjects.Text | null = null;
 
     constructor(uiManager: WebUIManager, playerName: string, stateMachine: StateMachine) {
+        super({ key: "DetonatorGame" });
+
         this.uiManager = uiManager;
         this.stateMachine = stateMachine;
         this.playerName = playerName;
@@ -197,24 +196,35 @@ export class DetonatorGame {
     startGame() {
         this.uiManager.hideExitPopup();
 
-        this.game = new Phaser.Game(
-            this.canvasInfo.width,
-            this.canvasInfo.height,
-            this.canvasInfo.canvasType,
-            "gameCanvas",
-            {
-                preload: () => {
-                    this.preload();
-                },
-                create: () => {
-                    this.create();
-                },
-                update: () => {
-                    this.update();
-                },
-                enableDebug: false
+        // Remove all child elements of gameCanvas - phaser bug!
+        withElement("gameCanvas", (canvas) => {
+            while (canvas.hasChildNodes()) {
+                let lastChild = canvas.lastChild;
+                if (lastChild) {
+                    canvas.removeChild(lastChild);
+                }
             }
-        );
+        });
+
+        const config: Phaser.Types.Core.GameConfig = {
+            type: this.canvasInfo.canvasType,
+            width: this.canvasInfo.width,
+            height: this.canvasInfo.height,
+            parent: "gameCanvas",
+            pixelArt: true,
+            backgroundColor: "#000000",
+            scene: this,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            input: {
+                keyboard: true,
+                touch: true
+            }
+        };
+
+        this.phaserGame = new Phaser.Game(config);
     }
 
     getCanvasInfo(): CanvasInfo {
@@ -252,16 +262,6 @@ export class DetonatorGame {
                 screenX = screenY * aspect;
             }
         }
-
-        // Remove all child elements of gameCanvas - phaser bug!
-        withElement("gameCanvas", (canvas) => {
-            while (canvas.hasChildNodes()) {
-                let lastChild = canvas.lastChild;
-                if (lastChild) {
-                    canvas.removeChild(lastChild);
-                }
-            }
-        });
 
         return {
             width: screenX,
@@ -343,99 +343,122 @@ export class DetonatorGame {
         this.leaderboardNames = [];
         this.leaderboardScores = [];
 
-        if (this.game) {
-            this.game.destroy();
+        if (this.phaserGame) {
+            this.phaserGame.destroy(true);
         }
     }
 
     preload(): void {
-        if (!this.game) {
-            return;
-        }
-
         let prefix = IMG_PREFIX;
 
-        this.game.load.spritesheet("p1", prefix + "p1.png", 32, 32);
-        this.game.load.spritesheet("p2", prefix + "p2.png", 32, 32);
-        this.game.load.spritesheet("p3", prefix + "p3.png", 32, 32);
-        this.game.load.spritesheet("p4", prefix + "p4.png", 32, 32);
-        this.game.load.spritesheet("mob1", prefix + "mob1.png", 32, 32);
-        this.game.load.spritesheet("tiles", prefix + "tileset1.png", 32, 32);
-        this.game.load.spritesheet("explode", prefix + "explode.png", 32, 32);
-        this.game.load.spritesheet("bombs", prefix + "bombtiles.png", 32, 32);
-        this.game.load.spritesheet("controls", prefix + "controls.png", 32, 32);
-        this.game.load.image("shade", prefix + "shade.png");
+        this.load.spritesheet("p1", prefix + "p1.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p2", prefix + "p2.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p3", prefix + "p3.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p4", prefix + "p4.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("mob1", prefix + "mob1.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("tiles", prefix + "tileset1.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("explode", prefix + "explode.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("bombs", prefix + "bombtiles.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("controls", prefix + "controls.png", { frameWidth: 32, frameHeight: 32 });
+        this.load.image("shade", prefix + "shade.png");
 
-        this.game.load.script(
+        this.load.script(
             "webfont",
             "https://ajax.googleapis.com/ajax/libs/webfont/1.4.7/webfont.js"
         );
     }
 
     create(): void {
-        if (!this.game) {
-            console.error("Game is null");
-            return;
+        // Create shared animations for player spritesheets.
+        const playerKeys = ["p1", "p2", "p3", "p4"];
+        for (const key of playerKeys) {
+            if (!this.anims.exists(key + "_down")) {
+                this.anims.create({
+                    key: key + "_down",
+                    frames: this.anims.generateFrameNumbers(key, { frames: [0, 1, 2, 1] }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+                this.anims.create({
+                    key: key + "_up",
+                    frames: this.anims.generateFrameNumbers(key, { frames: [3, 4, 5, 4] }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+                this.anims.create({
+                    key: key + "_left",
+                    frames: this.anims.generateFrameNumbers(key, { frames: [6, 7, 9, 7, 6, 7, 8, 7] }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+                this.anims.create({
+                    key: key + "_right",
+                    frames: this.anims.generateFrameNumbers(key, { frames: [6, 7, 9, 7, 6, 7, 8, 7] }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+            }
         }
 
-        this.game.time.advancedTiming = true;
+        // Create shared animations for mob spritesheets.
+        if (!this.anims.exists("mob1_updown")) {
+            this.anims.create({
+                key: "mob1_updown",
+                frames: this.anims.generateFrameNumbers("mob1", { frames: [0, 1] }),
+                frameRate: 10,
+                repeat: -1
+            });
+            this.anims.create({
+                key: "mob1_left",
+                frames: this.anims.generateFrameNumbers("mob1", { frames: [2, 3] }),
+                frameRate: 10,
+                repeat: -1
+            });
+            this.anims.create({
+                key: "mob1_right",
+                frames: this.anims.generateFrameNumbers("mob1", { frames: [2, 3] }),
+                frameRate: 10,
+                repeat: -1
+            });
+        }
 
-        // Phaser tweaks.
-        this.mykeys = this.game.input.keyboard.addKeys({
-            up: Phaser.KeyCode.UP,
-            down: Phaser.KeyCode.DOWN,
-            left: Phaser.KeyCode.LEFT,
-            right: Phaser.KeyCode.RIGHT,
-            fire: Phaser.KeyCode.SPACEBAR,
-            special: Phaser.KeyCode.COMMA
-        });
-        this.altkeys = this.game.input.keyboard.addKeys({
-            up: Phaser.KeyCode.W,
-            down: Phaser.KeyCode.S,
-            left: Phaser.KeyCode.A,
-            right: Phaser.KeyCode.D,
-            fire: Phaser.KeyCode.CONTROL,
-            special: Phaser.KeyCode.ALT
-        });
+        // Set up keyboard input.
+        if (this.input.keyboard) {
+            this.mykeys = this.input.keyboard.addKeys({
+                up: Phaser.Input.Keyboard.KeyCodes.UP,
+                down: Phaser.Input.Keyboard.KeyCodes.DOWN,
+                left: Phaser.Input.Keyboard.KeyCodes.LEFT,
+                right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+                fire: Phaser.Input.Keyboard.KeyCodes.SPACE,
+                special: Phaser.Input.Keyboard.KeyCodes.COMMA
+            }) as KeyBindings;
+            this.altkeys = this.input.keyboard.addKeys({
+                up: Phaser.Input.Keyboard.KeyCodes.W,
+                down: Phaser.Input.Keyboard.KeyCodes.S,
+                left: Phaser.Input.Keyboard.KeyCodes.A,
+                right: Phaser.Input.Keyboard.KeyCodes.D,
+                fire: Phaser.Input.Keyboard.KeyCodes.CTRL,
+                special: Phaser.Input.Keyboard.KeyCodes.ALT
+            }) as KeyBindings;
+        }
 
         this.curAction = new Action().toJSON();
 
-        this.worldGroup = this.game.add.group();
-        this.worldGroup.z = -100;
+        this.worldGroup = this.add.group();
+        this.bombGroup = this.add.group();
+        this.playerGroup = this.add.group();
+        this.curPlayerGroup = this.add.group();
+        this.mobGroup = this.add.group();
+        this.explosionGroup = this.add.group();
+        this.powerupGroup = this.add.group();
+        this.shadeGroup = this.add.group();
+        this.controlsGroup = this.add.group();
 
-        this.bombGroup = this.game.add.group();
-        this.bombGroup.z = 10;
+        // Disable visibility change pausing.
+        this.sys.game.events.on("hidden", () => { /* do nothing */ });
+        this.sys.game.events.on("visible", () => { /* do nothing */ });
 
-        this.playerGroup = this.game.add.group();
-        this.playerGroup.z = 20;
-
-        this.curPlayerGroup = this.game.add.group();
-        this.curPlayerGroup.z = 30;
-
-        this.mobGroup = this.game.add.group();
-        this.mobGroup.z = 35;
-
-        this.explosionGroup = this.game.add.group();
-        this.explosionGroup.z = 40;
-
-        this.powerupGroup = this.game.add.group();
-        this.powerupGroup.z = 50;
-
-        this.shadeGroup = this.game.add.group();
-        this.shadeGroup.z = 90;
-
-        this.controlsGroup = this.game.add.group();
-        this.controlsGroup.z = 100;
-
-        // Init display.
-        this.game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
-        this.game.scale.fullScreenScaleMode = Phaser.ScaleManager.SHOW_ALL;
-        this.game.scale.windowConstraints.bottom = "visual";
-        this.game.stage.smoothed = false;
-        this.game.stage.backgroundColor = "#000000";
-        this.game.stage.disableVisibilityChange = true;
-
-        if (this.game.device.desktop) {
+        if (this.sys.game.device.os.desktop) {
             this.touchEnabled = false;
             this.iconDisplayed = true;
 
@@ -444,14 +467,14 @@ export class DetonatorGame {
                 player: "block"
             });
 
-            this.game.scale.stopFullScreen();
-
             this.playerStatsDisplayed = true;
         } else {
             this.touchEnabled = true;
-            this.game.scale.forceOrientation(true, false);
-            this.game.scale.enterIncorrectOrientation.add(this.handleIncorrect);
-            this.game.scale.leaveIncorrectOrientation.add(this.handleCorrect);
+
+            // Handle orientation changes via resize event.
+            this.scale.on("resize", () => {
+                this.handleOrientationChange();
+            });
 
             this.iconDisplayed = false;
             setElementDisplay({
@@ -470,30 +493,27 @@ export class DetonatorGame {
         this.uiManager.showGame();
     }
 
-    handleIncorrect(): void {
-        if (this.game && !this.game.device.desktop) {
-            setElementDisplay({ orientwarning: "block" });
+    handleOrientationChange(): void {
+        if (this.sys.game.device.os.desktop) {
+            return;
         }
-    }
 
-    handleCorrect(): void {
-        if (this.game && !this.game.device.desktop) {
+        if (window.innerWidth < window.innerHeight) {
+            // Portrait mode - incorrect orientation.
+            setElementDisplay({ orientwarning: "block" });
+        } else {
             setElementDisplay({ orientwarning: "none" });
         }
     }
 
-    update(): void {
+    update(time: number, delta: number): void {
         if (this.quitFlag) {
-            return;
-        }
-        if (!this.game) {
-            console.error("Game is null!");
             return;
         }
 
         FPS_COUNT++;
 
-        this.curClientMS = this.game.time.now;
+        this.curClientMS = time;
         if (this.lastClientMS === 0) {
             this.lastClientMS = this.curClientMS - 1000 / targetFPS;
         }
@@ -501,7 +521,7 @@ export class DetonatorGame {
         this.clientElapsedMS = this.curClientMS - this.lastClientMS;
 
         if (!this.cameraset && this.curPlayer && this.curPlayer.id in this.playerSprites) {
-            this.game.camera.follow(this.playerSprites[this.curPlayer.id]);
+            this.cameras.main.startFollow(this.playerSprites[this.curPlayer.id]);
             this.cameraset = true;
         }
 
@@ -513,7 +533,6 @@ export class DetonatorGame {
         this.handleTouch();
 
         if (this.clientElapsedMS >= this.minMS) {
-
 
             FPS_INPUT_COUNT++;
             this.lastClientMS = this.curClientMS;
@@ -570,13 +589,14 @@ export class DetonatorGame {
                     if (this.curPlayer.id in this.playerSprites) {
                         this.deadSprite = this.playerSprites[this.curPlayer.id];
                     } else {
-                        this.deadSprite = this.game.add.sprite(
+                        this.deadSprite = this.add.sprite(
                             this.curPlayer.x,
                             this.curPlayer.y,
                             this.curPlayer.image,
                             1
                         );
-                        this.deadSprite.anchor.set(0.5);
+                        this.deadSprite.setOrigin(0.5);
+                        this.deadSprite.setDepth(DEPTH.CUR_PLAYER);
                         if (this.curPlayerGroup) {
                             this.curPlayerGroup.add(this.deadSprite);
                         }
@@ -591,8 +611,8 @@ export class DetonatorGame {
                 if (this.deadSprite.alpha <= 0) {
                     this.deadSprite.alpha = 0;
                 }
-                this.deadSprite.scale.x *= 1.05;
-                this.deadSprite.scale.y *= 1.05;
+                this.deadSprite.scaleX *= 1.05;
+                this.deadSprite.scaleY *= 1.05;
             }
 
             this.deadCounter--;
@@ -603,11 +623,6 @@ export class DetonatorGame {
     }
 
     handleTouch(): void {
-        // because phaser event-based touch input is fucked.
-        if (!this.game) {
-            return;
-        }
-
         this.touchActions = {
             up: false,
             down: false,
@@ -615,11 +630,16 @@ export class DetonatorGame {
             right: false,
             bomb: false
         };
-        this.checkPointer(this.game.input.pointer1);
-        this.checkPointer(this.game.input.pointer2);
+
+        if (this.input.pointer1) {
+            this.checkPointer(this.input.pointer1);
+        }
+        if (this.input.pointer2) {
+            this.checkPointer(this.input.pointer2);
+        }
     }
 
-    checkPointer(pointer: Phaser.Pointer): void {
+    checkPointer(pointer: Phaser.Input.Pointer): void {
         if (!pointer.isDown) {
             return;
         }
@@ -634,15 +654,14 @@ export class DetonatorGame {
         }
     }
 
-    spriteContains(sprite: Phaser.Sprite, x: number, y: number): boolean {
-        if (!this.game) {
-            return false;
-        }
+    spriteContains(sprite: Phaser.GameObjects.Sprite, x: number, y: number): boolean {
+        // Control sprites have scrollFactor 0, so their screen position is their position directly.
+        let sx = sprite.x;
+        let sy = sprite.y;
+        let sw = sprite.displayWidth;
+        let sh = sprite.displayHeight;
 
-        let sx = sprite.x - this.game.camera.x;
-        let sy = sprite.y - this.game.camera.y;
-
-        if (x >= sx && x < sx + sprite.width && y >= sy && y < sy + sprite.height) {
+        if (x >= sx && x < sx + sw && y >= sy && y < sy + sh) {
             return true;
         }
 
@@ -650,21 +669,17 @@ export class DetonatorGame {
     }
 
     goFull(): void {
-        if (!this.game) {
-            return;
-        }
-
         if (this.touchEnabled) {
-            if (!this.game.scale.isFullScreen) {
-                this.game.scale.startFullScreen(false, true);
+            if (!this.scale.isFullscreen) {
+                this.scale.startFullscreen();
             } else {
-                this.game.scale.stopFullScreen();
+                this.scale.stopFullscreen();
             }
         }
     }
 
     addTouchControls(): void {
-        if (!this.game || !this.controlsGroup) {
+        if (!this.controlsGroup) {
             return;
         }
 
@@ -678,88 +693,95 @@ export class DetonatorGame {
         let controlsy = bottom - (10 + size + gap + size + gap + size);
 
         // UP
-        let sprite = this.game.add.sprite(controlsx + size + gap, controlsy, "controls", 0);
+        let sprite = this.add.sprite(controlsx + size + gap, controlsy, "controls", 0);
         this.controlSprites["up"] = sprite;
-        sprite.fixedToCamera = true;
-        sprite.scale.x = scale;
-        sprite.scale.y = scale;
+        sprite.setOrigin(0, 0);
+        sprite.setScrollFactor(0);
+        sprite.setScale(scale);
         sprite.alpha = 0.8;
+        sprite.setDepth(DEPTH.CONTROLS);
         this.controlsGroup.add(sprite);
 
         // DOWN
-        sprite = this.game.add.sprite(
+        sprite = this.add.sprite(
             controlsx + size + gap,
             controlsy + size + gap + size + gap,
             "controls",
             1
         );
-        sprite.fixedToCamera = true;
+        sprite.setOrigin(0, 0);
+        sprite.setScrollFactor(0);
         this.controlSprites["down"] = sprite;
-        sprite.inputEnabled = true;
-        sprite.scale.x = scale;
-        sprite.scale.y = scale;
+        sprite.setInteractive();
+        sprite.setScale(scale);
         sprite.alpha = 0.8;
+        sprite.setDepth(DEPTH.CONTROLS);
         this.controlsGroup.add(sprite);
 
         // LEFT
-        sprite = this.game.add.sprite(controlsx, controlsy + size + gap, "controls", 2);
-        sprite.fixedToCamera = true;
+        sprite = this.add.sprite(controlsx, controlsy + size + gap, "controls", 2);
+        sprite.setOrigin(0, 0);
+        sprite.setScrollFactor(0);
         this.controlSprites["left"] = sprite;
-        sprite.inputEnabled = true;
-        sprite.scale.x = scale;
-        sprite.scale.y = scale;
+        sprite.setInteractive();
+        sprite.setScale(scale);
         sprite.alpha = 0.8;
+        sprite.setDepth(DEPTH.CONTROLS);
         this.controlsGroup.add(sprite);
 
         // RIGHT
-        sprite = this.game.add.sprite(
+        sprite = this.add.sprite(
             controlsx + size + gap + size + gap,
             controlsy + size + gap,
             "controls",
             3
         );
-        sprite.fixedToCamera = true;
+        sprite.setOrigin(0, 0);
+        sprite.setScrollFactor(0);
         this.controlSprites["right"] = sprite;
-        sprite.inputEnabled = true;
-        sprite.scale.x = scale;
-        sprite.scale.y = scale;
+        sprite.setInteractive();
+        sprite.setScale(scale);
         sprite.alpha = 0.8;
+        sprite.setDepth(DEPTH.CONTROLS);
         this.controlsGroup.add(sprite);
 
         // BOMB
-        sprite = this.game.add.sprite(right - (10 + size), bottom - (10 + size), "controls", 4);
-        sprite.fixedToCamera = true;
+        sprite = this.add.sprite(right - (10 + size), bottom - (10 + size), "controls", 4);
+        sprite.setOrigin(0, 0);
+        sprite.setScrollFactor(0);
         this.controlSprites["bomb"] = sprite;
-        sprite.inputEnabled = true;
-        sprite.scale.x = scale;
-        sprite.scale.y = scale;
+        sprite.setInteractive();
+        sprite.setScale(scale);
         sprite.alpha = 0.8;
+        sprite.setDepth(DEPTH.CONTROLS);
         this.controlsGroup.add(sprite);
 
         // Don't show fullscreen button on Android - point users to app instead.
         // Don't show the fullscreen button on iPhone/iPad either - it doesn't work.
         if (!this.uiManager.isAndroid() && !this.uiManager.isApple()) {
             // FULLSCREEN TOGGLE
-            sprite = this.game.add.sprite(10, 10, "controls", 5);
-            sprite.fixedToCamera = true;
+            sprite = this.add.sprite(10, 10, "controls", 5);
+            sprite.setOrigin(0, 0);
+            sprite.setScrollFactor(0);
             this.controlSprites["fs"] = sprite;
-            sprite.events.onInputDown.add(this.goFull);
-            this.controlsGroup.add(sprite);
-            sprite.scale.x = 2;
-            sprite.scale.y = 2;
+            sprite.setInteractive();
+            sprite.on("pointerdown", () => { this.goFull(); });
+            sprite.setScale(2);
             sprite.alpha = 0.8;
-            sprite.inputEnabled = true;
+            sprite.setDepth(DEPTH.CONTROLS);
+            this.controlsGroup.add(sprite);
         } else if (this.uiManager.isApple()) {
             // EXIT BUTTON
-            sprite = this.game.add.sprite(10, 10, "controls", 6);
-            sprite.fixedToCamera = true;
+            sprite = this.add.sprite(10, 10, "controls", 6);
+            sprite.setOrigin(0, 0);
+            sprite.setScrollFactor(0);
             this.controlSprites["exit"] = sprite;
-            sprite.events.onInputDown.add(this.uiManager.showExitPopup);
-            this.controlsGroup.add(sprite);
-            sprite.scale.x = 2;
-            sprite.scale.y = 2;
+            sprite.setInteractive();
+            sprite.on("pointerdown", () => { this.uiManager.showExitPopup(); });
+            sprite.setScale(2);
             sprite.alpha = 0.8;
-            sprite.inputEnabled = true;
+            sprite.setDepth(DEPTH.CONTROLS);
+            this.controlsGroup.add(sprite);
         }
     }
 
@@ -781,10 +803,6 @@ export class DetonatorGame {
     }
 
     updateStatus(): void {
-        if (!this.game) {
-            return;
-        }
-
         let status: string;
 
         if (!this.curPlayer) {
@@ -799,19 +817,19 @@ export class DetonatorGame {
                 status += "   RANK: " + this.curPlayer.rank + " of " + this.totalPlayers;
             }
 
-            // status += "   FPS: " + this.game.time.fps;
-
             if (!this.scoreText) {
-                let text = this.game.add.text(310, this.canvasInfo.height - 20, status);
-                text.fixedToCamera = true;
-                text.anchor.setTo(0);
-                text.font = "Raleway";
-                text.fontSize = 12;
-                text.fill = "#ffffff";
+                let text = this.add.text(310, this.canvasInfo.height - 20, status, {
+                    fontFamily: "Raleway",
+                    fontSize: "12px",
+                    color: "#ffffff",
+                    align: "left"
+                });
+                text.setScrollFactor(0);
+                text.setOrigin(0);
                 text.alpha = 0.8;
-                text.align = "left";
-                text.strokeThickness = 0;
+                text.setStroke("", 0);
                 text.setShadow(1, 1, "rgba(0, 0, 0, 0.5)", 0);
+                text.setDepth(DEPTH.CONTROLS);
                 if (this.controlsGroup) {
                     this.controlsGroup.add(text);
                 }
@@ -821,22 +839,22 @@ export class DetonatorGame {
             }
 
             if (!this.scoreShade) {
-                this.scoreShade = this.game.add.image(300, this.canvasInfo.height - 25, "shade");
-                this.scoreShade.fixedToCamera = true;
-                this.scoreShade.anchor.setTo(0);
+                this.scoreShade = this.add.image(300, this.canvasInfo.height - 25, "shade");
+                this.scoreShade.setScrollFactor(0);
+                this.scoreShade.setOrigin(0);
+                this.scoreShade.setDepth(DEPTH.SHADE);
                 if (this.shadeGroup) {
                     this.shadeGroup.add(this.scoreShade);
                 }
             }
 
-            this.scoreShade.width = this.scoreText.width + 20;
-            this.scoreShade.height = 20;
+            this.scoreShade.displayWidth = this.scoreText.width + 20;
+            this.scoreShade.displayHeight = 20;
 
             return;
         }
 
         // Only display if the window is big enough.
-        // let w = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
         let h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
 
         let threshold = 850;
@@ -867,7 +885,6 @@ export class DetonatorGame {
             status += "</td></tr>";
             status += "</table>";
 
-            // status += "<br /><br />FPS: " + game.time.fps;
             withElement("player", (elem) => {
                 elem.innerHTML = status;
             });
@@ -907,7 +924,7 @@ export class DetonatorGame {
 
     destroyPlayerSprite(pid: string): void {
         if (pid in this.playerSprites) {
-            this.playerSprites[pid].kill();
+            this.playerSprites[pid].setActive(false).setVisible(false);
             this.playerSprites[pid].destroy();
             delete this.playerSprites[pid];
         }
@@ -915,7 +932,7 @@ export class DetonatorGame {
 
     destroyMobSprite(mid: string): void {
         if (mid in this.mobSprites) {
-            this.mobSprites[mid].kill();
+            this.mobSprites[mid].setActive(false).setVisible(false);
             this.mobSprites[mid].destroy();
             delete this.mobSprites[mid];
         }
@@ -923,7 +940,7 @@ export class DetonatorGame {
 
     destroyPlayerName(pid: string): void {
         if (pid in this.playerNames) {
-            this.playerNames[pid].kill();
+            this.playerNames[pid].setActive(false).setVisible(false);
             this.playerNames[pid].destroy();
             delete this.playerNames[pid];
         }
@@ -931,7 +948,7 @@ export class DetonatorGame {
 
     destroyBombSprite(bid: string): void {
         if (bid in this.bombSprites) {
-            this.bombSprites[bid].kill();
+            this.bombSprites[bid].setActive(false).setVisible(false);
             this.bombSprites[bid].destroy();
             delete this.bombSprites[bid];
         }
@@ -939,20 +956,13 @@ export class DetonatorGame {
 
     destroyExplosion(eid: string): void {
         if (eid in this.explosionEmitters) {
-            this.explosionEmitters[eid].removeAll(true);
-            if (this.explosionGroup) {
-                this.explosionGroup.remove(this.explosionEmitters[eid], true);
-            }
+            this.explosionEmitters[eid].stop();
+            this.explosionEmitters[eid].destroy();
             delete this.explosionEmitters[eid];
         }
     }
 
     createWorld(data: WorldData): void {
-        if (!this.game) {
-            console.error("GAME NOT RUNNING!");
-            return;
-        }
-
         this.world.fromJSON(data);
 
         // Custom world using sprites.
@@ -965,7 +975,7 @@ export class DetonatorGame {
             this.worldSprites.push(null);
         }
 
-        this.game.world.setBounds(
+        this.cameras.main.setBounds(
             0,
             0,
             this.world.width * this.world.tilewidth,
@@ -974,10 +984,6 @@ export class DetonatorGame {
     }
 
     updateWorld(data: ChunkData): void {
-        if (!this.game) {
-            return;
-        }
-
         let tx = data.tx;
         let ty = data.ty;
         let chunkwidth = data.width;
@@ -987,7 +993,7 @@ export class DetonatorGame {
         let realIndex;
         let val;
         let mx, my;
-        let tile;
+        let tile: Phaser.GameObjects.Image | null;
 
         // Kill sprites that are no longer visible.
         if (tx !== this.lastTX) {
@@ -1007,7 +1013,7 @@ export class DetonatorGame {
                     realIndex = my * this.world.width + mx;
                     let sprite = this.worldSprites[realIndex];
                     if (sprite != null) {
-                        sprite.kill();
+                        sprite.setActive(false).setVisible(false);
 
                         // Now make it null. The group will keep track of the
                         // original object.
@@ -1034,7 +1040,7 @@ export class DetonatorGame {
                 for (mx = this.lastTX; mx < this.lastTX + chunkwidth; mx++) {
                     let sprite = this.worldSprites[realIndex];
                     if (sprite != null) {
-                        sprite.kill();
+                        sprite.setActive(false).setVisible(false);
 
                         // Now make it null. The group will keep track of the
                         // original object.
@@ -1064,74 +1070,72 @@ export class DetonatorGame {
                 tile = this.worldSprites[realIndex];
 
                 if (tile == null) {
+                    // Try to find an inactive sprite in the world group to reuse.
+                    let reused = false;
                     if (this.worldGroup) {
-                        tile = this.worldGroup.getFirstExists(
-                            false, // not exists.
-                            false, // don't create if null.
-                            mx * this.world.tilewidth,
-                            my * this.world.tileheight,
-                            "tiles",
-                            val
-                        );
+                        const children = this.worldGroup.getChildren() as Phaser.GameObjects.Image[];
+                        for (let c = 0; c < children.length; c++) {
+                            if (!children[c].active) {
+                                tile = children[c];
+                                tile.setPosition(mx * this.world.tilewidth, my * this.world.tileheight);
+                                tile.setFrame(val);
+                                tile.setActive(true).setVisible(true);
+                                reused = true;
+                                break;
+                            }
+                        }
                     }
 
-                    if (tile == null) {
-                        tile = this.game.add.image(
+                    if (!reused) {
+                        tile = this.add.image(
                             mx * this.world.tilewidth,
                             my * this.world.tileheight,
                             "tiles",
                             val
                         );
-                        tile.anchor.set(0, 0);
+                        tile.setOrigin(0, 0);
+                        tile.setDepth(DEPTH.WORLD);
                         if (this.worldGroup) {
                             this.worldGroup.add(tile);
                         }
-                    } else {
-                        tile.revive();
                     }
 
                     this.worldSprites[realIndex] = tile;
                 } else {
-                    tile.frame = val;
+                    tile.setFrame(val);
                 }
 
                 realIndex++;
             }
         }
-
-
-        // DEBUG: check number of valid tiles.
-        // let count = 0;
-        // for (let i = 0; i < worldSprites.length; i++) {
-        //     if (worldSprites[i] != null) {
-        //         count++;
-        //     }
-        // }
     }
 
     emitPowerup(data: string): void {
-        if (!this.curPlayer || !this.game) {
+        if (!this.curPlayer) {
             return;
         }
 
-        let text = this.game.add.text(this.curPlayer.x, this.curPlayer.y, data);
-        text.anchor.setTo(0.5);
-        text.font = "Raleway";
-        text.fontSize = 12;
         let first = data.charAt(0);
+        let color: string;
         if (first === "+") {
-            text.fill = "#00ff00";
+            color = "#00ff00";
         } else if (first === "-") {
-            text.fill = "#ff0000";
+            color = "#ff0000";
         } else {
-            text.fill = "#ffffff";
+            color = "#ffffff";
         }
-        text.alpha = 1.0;
 
-        text.align = "center";
-        // text.stroke = "#000000";
-        text.strokeThickness = 0;
+        let text = this.add.text(this.curPlayer.x, this.curPlayer.y, data, {
+            fontFamily: "Raleway",
+            fontSize: "12px",
+            color: color,
+            align: "center"
+        });
+        text.setOrigin(0.5);
+        text.setStroke("", 0);
         text.setShadow(1, 1, "rgba(0,0,0,0.8)", 0);
+        text.alpha = 1.0;
+        text.setDepth(DEPTH.POWERUP);
 
         if (this.powerupGroup) {
             this.powerupGroup.add(text);
@@ -1146,16 +1150,12 @@ export class DetonatorGame {
         worlddata: ChunkData,
         mobs: MobData[]
     ): void {
-        if (!this.game) {
-            return;
-        }
-
         let pid: string;
         let bid: string;
         let eid: string;
         let mid: string;
         let i;
-        let sprite;
+        let sprite: Phaser.GameObjects.Sprite;
 
         this.totalPlayers = players.length;
 
@@ -1202,7 +1202,7 @@ export class DetonatorGame {
                     this.playerSprites[pid].x = kPlayer.x;
                     this.playerSprites[pid].y = kPlayer.y;
 
-                    this.setSprite(this.playerSprites[pid], kPlayer.action);
+                    this.setSprite(this.playerSprites[pid], kPlayer.action, kPlayer.image);
 
                     this.movePlayerName(kPlayer);
                 }
@@ -1232,28 +1232,22 @@ export class DetonatorGame {
 
                     // SHOW SERVER COPY.
                     if (this.showGhost) {
-                        this.playerSpriteServer = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
-                        this.playerSpriteServer.anchor.set(0.5);
-
-                        this.playerSpriteServer.animations.add("down", [0, 1, 2, 1]);
-                        this.playerSpriteServer.animations.add("up", [3, 4, 5, 4]);
-
-                        // Even though left and right are the same, we need a different
-                        // label to differentiate between them.
-                        this.playerSpriteServer.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
-                        this.playerSpriteServer.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
-
+                        this.playerSpriteServer = this.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                        this.playerSpriteServer.setOrigin(0.5);
+                        this.playerSpriteServer.setDepth(DEPTH.CUR_PLAYER);
                         if (this.curPlayerGroup) {
                             this.curPlayerGroup.add(this.playerSpriteServer);
                         }
                     }
 
-                    sprite = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                    sprite = this.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                    sprite.setDepth(DEPTH.CUR_PLAYER);
                     if (this.curPlayerGroup) {
                         this.curPlayerGroup.add(sprite);
                     }
                 } else {
-                    sprite = this.game.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                    sprite = this.add.sprite(kPlayer.x, kPlayer.y, kPlayer.image);
+                    sprite.setDepth(DEPTH.PLAYER);
                     if (this.playerGroup) {
                         this.playerGroup.add(sprite);
                     }
@@ -1261,15 +1255,7 @@ export class DetonatorGame {
                     this.makePlayerName(kPlayer);
                 }
 
-                sprite.anchor.set(0.5);
-                sprite.animations.add("down", [0, 1, 2, 1]);
-                sprite.animations.add("up", [3, 4, 5, 4]);
-
-                // Even though left and right are the same, we need a different
-                // label to differentiate between them.
-                sprite.animations.add("left", [6, 7, 9, 7, 6, 7, 8, 7]);
-                sprite.animations.add("right", [6, 7, 9, 7, 6, 7, 8, 7]);
-
+                sprite.setOrigin(0.5);
                 this.playerSprites[pid] = sprite;
             }
         }
@@ -1297,23 +1283,23 @@ export class DetonatorGame {
                 sprite.x = kMob.x;
                 sprite.y = kMob.y;
 
-                // sprite...
                 let mobAction = mobs[i].action;
                 let anim = "updown";
 
                 if (mobAction.x < 0) {
                     anim = "left";
-                    sprite.scale.x = -1;
+                    sprite.scaleX = -1;
                 } else if (mobAction.x > 0) {
                     anim = "right";
-                    sprite.scale.x = 1;
+                    sprite.scaleX = 1;
                 } else if (mobAction.y !== 0) {
                     anim = "updown";
                 }
 
-                let curAnim = sprite.animations.currentAnim;
-                if (!curAnim || curAnim.name != anim || !curAnim.isPlaying) {
-                    sprite.animations.play(anim, 10, true);
+                let animKey = kMob.image + "_" + anim;
+                let curAnimKey = sprite.anims.currentAnim ? sprite.anims.currentAnim.key : null;
+                if (curAnimKey !== animKey || !sprite.anims.isPlaying) {
+                    sprite.play(animKey);
                 }
             } else {
                 // spawn new sprite for this mob.
@@ -1322,19 +1308,13 @@ export class DetonatorGame {
                     kMob.image = "mob1";
                 }
 
-                sprite = this.game.add.sprite(kMob.x, kMob.y, kMob.image);
+                sprite = this.add.sprite(kMob.x, kMob.y, kMob.image);
+                sprite.setDepth(DEPTH.MOB);
                 if (this.mobGroup) {
                     this.mobGroup.add(sprite);
                 }
 
-                sprite.anchor.set(0.5);
-                sprite.animations.add("updown", [0, 1]);
-
-                // Even though left and right are the same, we need a different
-                // label to differentiate between them.
-                sprite.animations.add("left", [2, 3]);
-                sprite.animations.add("right", [2, 3]);
-
+                sprite.setOrigin(0.5);
                 this.mobSprites[mid] = sprite;
             }
         }
@@ -1360,13 +1340,15 @@ export class DetonatorGame {
                 this.bombSprites[bid].y = by;
             } else {
                 // spawn new sprite for this bomb.
-                let bomb = this.game.add.image(bx, by, "bombs");
+                // Use Sprite instead of Image so we can animate.
+                let bomb = this.add.sprite(bx, by, "bombs");
+                bomb.setDepth(DEPTH.BOMB);
                 if (this.bombGroup) {
                     this.bombGroup.add(bomb);
                 }
 
                 // Show less frames if bomb will explode quicker.
-                let frames = [];
+                let frames: number[] = [];
                 let secsRemaining = Math.floor(bombs[i].remaining);
                 if (secsRemaining > 4) {
                     secsRemaining = 4;
@@ -1376,9 +1358,18 @@ export class DetonatorGame {
                     frames.push(n);
                 }
 
-                bomb.animations.add("blow", frames);
-                bomb.animations.play("blow", 1, false);
-                bomb.anchor.set(0.5);
+                // Create a unique animation key for this bomb's countdown.
+                let animKey = "bomb_blow_" + bid;
+                if (!this.anims.exists(animKey)) {
+                    this.anims.create({
+                        key: animKey,
+                        frames: this.anims.generateFrameNumbers("bombs", { frames: frames }),
+                        frameRate: 1,
+                        repeat: 0
+                    });
+                }
+                bomb.play(animKey);
+                bomb.setOrigin(0.5);
                 this.bombSprites[bid] = bomb;
             }
         }
@@ -1400,25 +1391,30 @@ export class DetonatorGame {
             let ey = explosions[i].y * this.world.tileheight + halftileheight;
 
             if (eid in this.explosionEmitters) {
-                this.explosionEmitters[eid].emitX = ex;
-                this.explosionEmitters[eid].emitY = ey;
+                // Emitter already exists; update its position.
+                this.explosionEmitters[eid].setPosition(ex, ey);
             } else {
-                // spawn new emitter for explosion.
-                let emitter = this.game.add.emitter(ex, ey, 3); // max particles.
+                // Spawn new particle emitter for explosion.
+                let ms = Math.floor(explosions[i].remaining * 1200);
+
+                let emitter = this.add.particles(ex, ey, "explode", {
+                    frame: [0, 1, 2, 3, 4, 5],
+                    lifespan: ms,
+                    speed: { min: -32, max: 32 },
+                    scale: { start: 1.0, end: 0.5 },
+                    alpha: { start: 1, end: 0 },
+                    rotate: { min: 0, max: 100 },
+                    gravityY: 0,
+                    quantity: 3,
+                    emitting: false
+                });
+                emitter.setDepth(DEPTH.EXPLOSION);
                 if (this.explosionGroup) {
                     this.explosionGroup.add(emitter);
                 }
 
-                emitter.makeParticles("explode", [0, 1, 2, 3, 4, 5]);
-                emitter.gravity = new Phaser.Point(0, 0);
-                // Make these go a little bit longer.
-                let ms = Math.floor(explosions[i].remaining * 1200);
-                emitter.setAlpha(1, 0, ms);
-                emitter.setScale(1.0, 0.5, 1.0, 0.5, ms);
-                emitter.minParticleSpeed.setTo(-32, -32);
-                emitter.maxParticleSpeed.setTo(32, 32);
-                emitter.setRotation(0, 100);
-                emitter.start(true, ms, 25, 3);
+                // Emit a burst of particles.
+                emitter.explode(3);
 
                 this.explosionEmitters[eid] = emitter;
             }
@@ -1439,6 +1435,11 @@ export class DetonatorGame {
 
         this.knownBombs.cleanUp((bid) => {
             this.destroyBombSprite(bid);
+            // Also clean up the bomb-specific animation.
+            let animKey = "bomb_blow_" + bid;
+            if (this.anims.exists(animKey)) {
+                this.anims.remove(animKey);
+            }
         });
 
         this.knownExplosions.cleanUp((eid) => {
@@ -1492,7 +1493,7 @@ export class DetonatorGame {
                 this.playerSpriteServer.x = this.curPlayer.x;
                 this.playerSpriteServer.y = this.curPlayer.y;
                 this.playerSpriteServer.alpha = 0.4;
-                this.setSprite(this.playerSpriteServer, this.curPlayer.action);
+                this.setSprite(this.playerSpriteServer, this.curPlayer.action, this.curPlayer.image);
             } else {
                 this.playerSpriteServer.visible = false;
             }
@@ -1516,7 +1517,7 @@ export class DetonatorGame {
         this.playerSprites[pid].y = this.tmpPlayer.y;
 
         // Play animation according to direction.
-        this.setSprite(this.playerSprites[pid], this.tmpPlayer.action);
+        this.setSprite(this.playerSprites[pid], this.tmpPlayer.action, this.tmpPlayer.image);
     }
 
     movePlayer(player: Player): void {
@@ -1592,16 +1593,16 @@ export class DetonatorGame {
         }
     }
 
-    setSprite(sprite: Phaser.Sprite, action: ActionData): void {
+    setSprite(sprite: Phaser.GameObjects.Sprite, action: ActionData, imageKey: string): void {
         if (action.x !== 0 || action.y !== 0) {
             let anim: string = "";
 
             if (action.x < 0) {
                 anim = "left";
-                sprite.scale.x = -1;
+                sprite.scaleX = -1;
             } else if (action.x > 0) {
                 anim = "right";
-                sprite.scale.x = 1;
+                sprite.scaleX = 1;
             } else if (action.y < 0) {
                 anim = "up";
             } else if (action.y > 0) {
@@ -1609,18 +1610,19 @@ export class DetonatorGame {
             }
 
             if (anim && anim.length > 0) {
-                let curAnim = sprite.animations.currentAnim;
-                if (!curAnim || curAnim.name !== anim || !curAnim.isPlaying) {
-                    sprite.animations.play(anim, 10, true);
+                let animKey = imageKey + "_" + anim;
+                let curAnimKey = sprite.anims.currentAnim ? sprite.anims.currentAnim.key : null;
+                if (curAnimKey !== animKey || !sprite.anims.isPlaying) {
+                    sprite.play(animKey);
                 }
             }
         } else {
-            sprite.animations.stop();
+            sprite.anims.stop();
         }
     }
 
     makePlayerName(player: Player): boolean {
-        if (!this.game || player.id in this.playerNames) {
+        if (player.id in this.playerNames) {
             return false;
         }
 
@@ -1628,15 +1630,17 @@ export class DetonatorGame {
             return false;
         }
 
-        let text = this.game.add.text(player.x, player.y - 20, player.name);
-        text.anchor.setTo(0.5);
-        text.font = "Raleway";
-        text.fontSize = 12;
-        text.fill = "#ffffff";
+        let text = this.add.text(player.x, player.y - 20, player.name, {
+            fontFamily: "Raleway",
+            fontSize: "12px",
+            color: "#ffffff",
+            align: "center"
+        });
+        text.setOrigin(0.5);
         text.alpha = 0.8;
-        text.align = "center";
-        text.strokeThickness = 0;
+        text.setStroke("", 0);
         text.setShadow(1, 1, "rgba(0,0,0,0.5)", 0);
+        text.setDepth(DEPTH.PLAYER);
 
         if (this.playerGroup) {
             this.playerGroup.add(text);

@@ -1,12 +1,8 @@
-use log::{error, info};
+use tracing::{error, info};
 
 use crate::{
     comms::playercomm::{
-        PlayerComm,
-        PlayerConnectEvent,
-        PlayerMessageExternal,
-        PlayerReceiver,
-        PlayerSender,
+        PlayerComm, PlayerConnectEvent, PlayerMessageExternal, PlayerReceiver, PlayerSender,
     },
     engine::player::PlayerId,
 };
@@ -14,8 +10,7 @@ use std::net::SocketAddr;
 
 use futures::{
     stream::{SplitSink, SplitStream},
-    SinkExt,
-    StreamExt,
+    SinkExt, StreamExt,
 };
 use tokio::{
     net::{TcpListener, TcpStream},
@@ -35,8 +30,8 @@ pub enum WsError {
     Disconnected,
 }
 
-impl From<tungstenite::error::Error> for WsError {
-    fn from(e: tungstenite::error::Error) -> Self {
+impl From<tungstenite::Error> for WsError {
+    fn from(e: tungstenite::Error) -> Self {
         WsError::ConnectError(e.to_string())
     }
 }
@@ -53,12 +48,6 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for WsError {
     }
 }
 
-impl From<tokio::sync::mpsc::error::RecvError> for WsError {
-    fn from(e: tokio::sync::mpsc::error::RecvError) -> Self {
-        WsError::RecvError(e.to_string())
-    }
-}
-
 impl From<tokio::io::Error> for WsError {
     fn from(e: tokio::io::Error) -> Self {
         WsError::ConnectError(e.to_string())
@@ -69,7 +58,7 @@ impl From<tokio::io::Error> for WsError {
 /// NOTE: The caller can run this on a separate executor if needed.
 pub async fn spawn_websocket_server(server_sender: Sender<PlayerConnectEvent>) -> WsResult<()> {
     let addr = "0.0.0.0:9002";
-    let mut listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind(&addr).await?;
     info!("Websocket server listening on: {}", addr);
     let mut next_player_id: u64 = 1;
 
@@ -101,9 +90,8 @@ async fn accept_connection(
     peer: SocketAddr,
     stream: TcpStream,
     player_id: PlayerId,
-    mut server_sender: Sender<PlayerConnectEvent>,
-) -> WsResult<()>
-{
+    server_sender: Sender<PlayerConnectEvent>,
+) -> WsResult<()> {
     if let Err(e) = handle_connection(peer, stream, player_id, server_sender.clone()).await {
         error!("Error processing connection: {:?}", e);
     }
@@ -120,8 +108,7 @@ async fn handle_connection(
     stream: TcpStream,
     player_id: PlayerId,
     server_sender: Sender<PlayerConnectEvent>,
-) -> WsResult<()>
-{
+) -> WsResult<()> {
     let ws_stream = accept_async(stream).await?;
 
     info!("New websocket connection: {}", peer);
@@ -132,8 +119,7 @@ async fn handle_connection(
     let (pcomm_tx, wscomm_rx) = channel(30); // PlayerComm -> ws (here)
     let (wscomm_tx, pcomm_rx) = channel(30); // ws (here) -> PlayerComm
     let player_comm = PlayerComm::new(player_id, pcomm_tx, pcomm_rx);
-    let mut server_sender_clone = server_sender.clone();
-    server_sender_clone
+    server_sender
         .send(PlayerConnectEvent::Connected(player_comm))
         .await?;
 
@@ -142,7 +128,7 @@ async fn handle_connection(
 
     // External -> ws -> PlayerComm
     let reader = process_websocket_read(ws_rx, wscomm_tx);
-    futures::try_join!(writer, reader)?;
+    tokio::try_join!(writer, reader)?;
     Ok(())
 }
 
@@ -151,9 +137,8 @@ async fn handle_connection(
 /// a channel connected to the PlayerComm object.
 async fn process_websocket_read(
     mut ws_rx: SplitStream<WebSocketStream<TcpStream>>,
-    mut player_tx: PlayerSender,
-) -> WsResult<()>
-{
+    player_tx: PlayerSender,
+) -> WsResult<()> {
     while let Some(msg) = ws_rx.next().await {
         let msg = msg?;
 
@@ -166,7 +151,8 @@ async fn process_websocket_read(
             // NOTE: this will terminate the connection if any message fails
             //       to deserialize. This is probably the desired behaviour
             //       to eliminate faulty clients.
-            let player_msg: PlayerMessageExternal = serde_json::from_str(&msg.to_string())?;
+            let text = msg.into_text().unwrap_or_default();
+            let player_msg: PlayerMessageExternal = serde_json::from_str(&text)?;
             player_tx.send(player_msg).await?
         } else if msg.is_binary() {
             // TODO: support bincode?
@@ -183,16 +169,15 @@ async fn process_websocket_read(
 async fn process_websocket_write(
     mut player_rx: PlayerReceiver,
     mut ws_tx: SplitSink<WebSocketStream<TcpStream>, Message>,
-) -> WsResult<()>
-{
-    while let Some(msg) = player_rx.next().await {
+) -> WsResult<()> {
+    while let Some(msg) = player_rx.recv().await {
         if msg.is_disconnect() {
             // TODO: trigger reader to drop as well.
             break;
         }
 
         ws_tx
-            .send(Message::from(serde_json::to_value(&msg)?.to_string()))
+            .send(Message::text(serde_json::to_value(&msg)?.to_string()))
             .await?;
     }
 

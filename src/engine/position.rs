@@ -1,5 +1,5 @@
 use crate::engine::world::World;
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
 use serde::Serialize;
 use std::ops::{Add, Mul, Sub};
 
@@ -113,13 +113,13 @@ impl MapPosition {
     pub fn random_offset(self, range: u32) -> Self {
         let irange = range as i32; // Don't worry, the range will always be small.
         Self {
-            x: self.x + thread_rng().gen_range(-irange, irange),
-            y: self.y + thread_rng().gen_range(-irange, irange),
+            x: self.x + rand::rng().random_range(-irange..irange),
+            y: self.y + rand::rng().random_range(-irange..irange),
         }
     }
 
     pub fn distance_to(self, pos: MapPosition) -> u32 {
-        (pos.y - self.y).abs() as u32 + (pos.x - self.x).abs() as u32
+        (pos.y - self.y).unsigned_abs() + (pos.x - self.x).unsigned_abs()
     }
 }
 

@@ -1,5 +1,3 @@
-const KEY_ENTER = 13;
-
 import { withElement, setElementDisplay, WebUIManager, ModalData } from "./lib/web";
 import { DetonatorGame, GameState } from "./lib/game";
 import { DetonatorGameOnline } from "./lib/gameonline";
@@ -28,88 +26,75 @@ function validNick(playerNameInput: HTMLInputElement): boolean {
     return regex.exec(playerNameInput.value) !== null;
 }
 
-window.onload = function (): void {
-    "use strict";
+// Initialise state machine.
+stateMachine.setInitialState(GameState.Menu);
+stateMachine.addTransition(GameState.Menu, GameState.InitGame, () => {
+    startGame();
+});
+stateMachine.addTransition(GameState.RespawnMenu, GameState.InitGame, () => {
+    startGame();
+});
 
-    // Initialise state machine.
-    stateMachine.setInitialState(GameState.Menu);
-    stateMachine.addTransition(GameState.Menu, GameState.InitGame, () => {
-        startGame();
-    });
-    stateMachine.addTransition(GameState.RespawnMenu, GameState.InitGame, () => {
-        startGame();
-    });
+let nickErrorText = document.querySelector("#startMenu .input-error");
 
-    let nickErrorText = document.querySelector("#startMenu .input-error");
+withElement("playerNameInput", (playerNameInput) => {
+    withElement("startButton", (btn) => {
+        btn.onclick = function () {
+            offlineMode = false;
 
-    withElement("playerNameInput", (playerNameInput) => {
-        withElement("startButton", (btn) => {
-            btn.onclick = function () {
-                offlineMode = false;
-
-                // check if the nick is valid
-                if (validNick(playerNameInput as HTMLInputElement)) {
-                    stateMachine.setState(GameState.InitGame);
-                } else {
-                    if (nickErrorText && nickErrorText instanceof HTMLLabelElement) {
-                        nickErrorText.style.display = "inline";
-                    }
-                }
-            };
-        });
-
-        playerNameInput.addEventListener("keypress", function (e) {
-            let key = e.which || e.keyCode;
-            if (key === KEY_ENTER) {
-                if (validNick(playerNameInput as HTMLInputElement)) {
-                    offlineMode = false;
-                    stateMachine.setState(GameState.InitGame);
-                } else {
-                    if (nickErrorText && nickErrorText instanceof HTMLLabelElement) {
-                        nickErrorText.style.display = "inline";
-                    }
+            // check if the nick is valid
+            if (validNick(playerNameInput as HTMLInputElement)) {
+                stateMachine.setState(GameState.InitGame);
+            } else {
+                if (nickErrorText && nickErrorText instanceof HTMLLabelElement) {
+                    nickErrorText.style.display = "inline";
                 }
             }
-        });
-    });
-
-    withElement("respawnBtn", (respawnBtn) => {
-        respawnBtn.onclick = function () {
-            stateMachine.setState(GameState.InitGame);
         };
     });
 
-    let display: { [x: string]: string } = {
-        extrainfo: "block",
-        appbuttons: "block",
-        mobileMenu: "none"
+    playerNameInput.addEventListener("keypress", function (e: KeyboardEvent) {
+        if (e.key === "Enter") {
+            if (validNick(playerNameInput as HTMLInputElement)) {
+                offlineMode = false;
+                stateMachine.setState(GameState.InitGame);
+            } else {
+                if (nickErrorText && nickErrorText instanceof HTMLLabelElement) {
+                    nickErrorText.style.display = "inline";
+                }
+            }
+        }
+    });
+});
+
+withElement("respawnBtn", (respawnBtn) => {
+    respawnBtn.onclick = function () {
+        stateMachine.setState(GameState.InitGame);
     };
-    if (uiManager.isMobile()) {
-        display = { extrainfo: "none", appbuttons: "none", mobileMenu: "block" };
-    }
-    setElementDisplay(display);
+});
 
-    uiManager.showMobBanner(false); // don't fade out.
-
-    // Allow user to break out of iframe...
-    let isiframe = false;
-
-    // try {
-    //     if (!/^https*:\/\/xp\.stevepryde\.com/.test(window.location.href)) {
-    //         isiframe = true;
-    //     }
-    // } catch (err) {
-    //     isiframe = true;
-    // }
-
-    setElementDisplay({ breakout: isiframe ? "block" : "none" });
-
-    withElement("exitframe", (breakoutBtn) => {
-        breakoutBtn.onclick = function () {
-            window.open("https://xp.stevepryde.com", "_top");
-        };
-    });
+let display: { [x: string]: string } = {
+    extrainfo: "block",
+    appbuttons: "block",
+    mobileMenu: "none"
 };
+if (uiManager.isMobile()) {
+    display = { extrainfo: "none", appbuttons: "none", mobileMenu: "block" };
+}
+setElementDisplay(display);
+
+uiManager.showMobBanner(false); // don't fade out.
+
+// Allow user to break out of iframe...
+let isiframe = false;
+
+setElementDisplay({ breakout: isiframe ? "block" : "none" });
+
+withElement("exitframe", (breakoutBtn) => {
+    breakoutBtn.onclick = function () {
+        window.open("https://xp.stevepryde.com", "_top");
+    };
+});
 
 function quitGame(data: ModalData): void {
     uiManager.hideExitPopup();

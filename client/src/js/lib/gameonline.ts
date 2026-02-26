@@ -55,12 +55,7 @@ export class DetonatorGameOnline extends DetonatorGame {
   }
 
   create() {
-    if (!this.game) {
-      console.error("Game is null");
-      return;
-    }
-
-    if (this.game.device.desktop) {
+    if (this.sys.game.device.os.desktop) {
       setElementDisplay({
         leaderboard: "block"
       });
@@ -145,19 +140,14 @@ export class DetonatorGameOnline extends DetonatorGame {
 
   updateLag(data: string): void {
     if (this.pingSent) {
-      // let obj = JSON.parse(data);
-      // let now = this?.game?.time.now;
-      // if (now) {
-      //   console.log(`LAG: ${now - obj.curMS}`);
-      // }
       this.pingSent = false;
     }
   }
 
 
   sendPing(): void {
-    if (!this.pingSent && this.game && this.socket && this.socket.readyState === 1) {
-      let curMS = this.game.time.now;
+    if (!this.pingSent && this.socket && this.socket.readyState === 1) {
+      let curMS = this.time.now;
       this.socket_wrapper("PING", JSON.stringify({ curMS }));
       this.pingSent = true;
     }

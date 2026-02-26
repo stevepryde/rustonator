@@ -1,20 +1,17 @@
 use crate::comms::websocket::WsError;
-use std::fmt;
 
 pub type ZResult<T> = Result<T, ZError>;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ZError {
+    #[error("Fatal error: {0}")]
     FatalError(String),
+    #[error("IO error: {0}")]
     IOError(String),
+    #[error("WebSocket error: {0:?}")]
     WebSocketError(WsError),
+    #[error("JSON error: {0}")]
     JsonError(String),
-}
-
-impl fmt::Display for ZError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 impl From<serde_json::error::Error> for ZError {

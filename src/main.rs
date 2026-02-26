@@ -58,22 +58,13 @@ async fn main() {
 }
 
 fn init_logging() {
-    // let mut log_file = path.clone();
-    // log_file.push("test.log");
-
-    fern::Dispatch::new()
-        .level(log::LevelFilter::Off)
-        .level_for("rustonator", log::LevelFilter::Debug)
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .chain(std::io::stdout())
-        .apply()
-        .expect("Error setting up logging");
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_level(true)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive("rustonator=debug".parse().unwrap())
+                .from_env_lossy(),
+        )
+        .init();
 }

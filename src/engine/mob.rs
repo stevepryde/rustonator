@@ -12,7 +12,7 @@ use crate::{
         randenum::RandEnumFrom,
     },
 };
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
 
@@ -188,7 +188,7 @@ impl Default for Mob {
                 target_player: PlayerId::from(0),
                 target_dir: MobTargetDir::Up,
                 range: 8,
-                smart: rand::thread_rng().gen_range(0, 10) > 7,
+                smart: rand::rng().random_range(0..10) > 7,
                 danger: false,
             },
         }
@@ -225,13 +225,7 @@ impl Mob {
             return;
         }
 
-        let effective_speed = if self.speed < 50.0 {
-            50.0
-        } else if self.speed > 300.0 {
-            300.0
-        } else {
-            self.speed
-        };
+        let effective_speed = self.speed.clamp(50.0, 300.0);
         self.position.x += tmp_action.x() as f64 * delta_time * effective_speed;
         self.position.y += tmp_action.y() as f64 * delta_time * effective_speed;
     }
@@ -249,7 +243,7 @@ impl Mob {
             MobTargetMode::NearbyCell => {
                 let blank = world.find_nearest_blank(map_pos.random_offset(self.server_data.range));
                 if !blank.is_top_left() {
-                    self.server_data.target_remaining = thread_rng().gen_range(5.0, 25.0);
+                    self.server_data.target_remaining = rand::rng().random_range(5.0..25.0);
                     self.server_data.target_position = blank;
                     has_target = true;
                 }
@@ -261,19 +255,19 @@ impl Mob {
                         .is_within_range(map_pos, self.server_data.range as i32)
                     {
                         self.server_data.target_player = p.id();
-                        self.server_data.target_remaining = thread_rng().gen_range(5.0, 120.0);
+                        self.server_data.target_remaining = rand::rng().random_range(5.0..120.0);
                         has_target = true;
                         break;
                     }
                 }
             }
             MobTargetMode::Clockwise | MobTargetMode::Anticlockwise => {
-                self.server_data.target_remaining = thread_rng().gen_range(1.0, 5.0);
+                self.server_data.target_remaining = rand::rng().random_range(1.0..5.0);
                 has_target = true;
             }
             MobTargetMode::ClockwiseNext | MobTargetMode::AnticlockwiseNext => {
                 self.server_data.old_position = map_pos;
-                self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
+                self.server_data.target_remaining = rand::rng().random_range(1.0..10.0);
                 has_target = true;
             }
             MobTargetMode::DangerAvoidance => {
@@ -289,7 +283,7 @@ impl Mob {
             // Just assign a default - clockwise.
             self.server_data.target_mode = MobTargetMode::Clockwise;
             self.server_data.old_position = map_pos;
-            self.server_data.target_remaining = thread_rng().gen_range(1.0, 10.0);
+            self.server_data.target_remaining = rand::rng().random_range(1.0..10.0);
         }
     }
 

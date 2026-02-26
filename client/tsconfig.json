@@ -1,18 +1,15 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
-    "target": "es6",
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "sourceMap": true,
     "strict": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
     "outDir": "dist",
     "baseUrl": ".",
-    "paths": {
-      "*": ["node_modules/*", "src/types/*"]
-    },
-    "types": ["node"]
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

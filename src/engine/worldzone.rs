@@ -1,7 +1,6 @@
 use crate::engine::position::{MapPosition, SizeInTiles};
-use itertools::Itertools;
-use log::*;
 use std::cmp::min;
+use tracing::error;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ZonePosition {
@@ -65,6 +64,7 @@ impl WorldZone {
 pub struct WorldZoneData {
     zone_size: SizeInTiles,
     zones_across: usize,
+    #[allow(dead_code)]
     zones_down: usize,
     zones: Vec<WorldZone>,
 }
@@ -76,8 +76,7 @@ impl WorldZoneData {
         width_in_tiles: i32,
         height_in_tiles: i32,
         quota_factor: f64,
-    ) -> Self
-    {
+    ) -> Self {
         let mut zones = Vec::with_capacity(
             (width_in_tiles / zone_width) as usize * (height_in_tiles / zone_height) as usize,
         );
@@ -187,14 +186,12 @@ impl WorldZoneData {
         self.zones.iter()
     }
 
-    /// Return iterator providing WorldZone objects sorted by (quota -
-    /// num_blocks) descending.
+    /// Return zones sorted by (quota - num_blocks) descending.
     pub fn zone_iter_sorted_by_shortfall(&self) -> impl Iterator<Item = &WorldZone> {
-        self.zones.iter().sorted_by(|a, b| {
-            Ord::cmp(
-                &(b.block_quota - b.num_blocks),
-                &(a.block_quota - a.num_blocks),
-            )
-        })
+        let mut sorted: Vec<&WorldZone> = self.zones.iter().collect();
+        sorted.sort_by(|a, b| {
+            (b.block_quota - b.num_blocks).cmp(&(a.block_quota - a.num_blocks))
+        });
+        sorted.into_iter()
     }
 }

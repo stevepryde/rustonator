@@ -62,11 +62,7 @@ impl PlayerMessageExternal {
     }
 
     pub fn is_disconnect(&self) -> bool {
-        if let PlayerMessage::Disconnect = self.data {
-            true
-        } else {
-            false
-        }
+        matches!(self.data, PlayerMessage::Disconnect)
     }
 }
 

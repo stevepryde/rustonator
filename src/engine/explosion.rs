@@ -50,7 +50,7 @@ impl Explosion {
         self.pid
     }
 
-    pub fn pname(&self) -> &String {
+    pub fn pname(&self) -> &str {
         &self.pname
     }
 

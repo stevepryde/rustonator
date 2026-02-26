@@ -1,4 +1,4 @@
-edition = "2018"
+edition = "2024"
 empty_item_single_line = false
 indent_style = "Block"
 tab_spaces = 4

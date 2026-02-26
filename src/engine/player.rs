@@ -15,12 +15,12 @@ use crate::{
         randenum::RandEnumFrom,
     },
 };
-use log::*;
-use rand::{seq::SliceRandom, Rng};
+use rand::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::convert::TryFrom;
+use std::sync::LazyLock;
+use tracing::{error, info};
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -124,27 +124,15 @@ impl Player {
     }
 
     pub fn is_dead(&self) -> bool {
-        if let PlayerState::Dead = self.state {
-            true
-        } else {
-            false
-        }
+        matches!(self.state, PlayerState::Dead)
     }
 
     pub fn is_active(&self) -> bool {
-        if let PlayerState::Active = self.state {
-            true
-        } else {
-            false
-        }
+        matches!(self.state, PlayerState::Active)
     }
 
     pub fn has_joined(&self) -> bool {
-        if let PlayerState::Joining = self.state {
-            false
-        } else {
-            true
-        }
+        !matches!(self.state, PlayerState::Joining)
     }
 
     pub fn state(&self) -> &PlayerState {
@@ -285,13 +273,7 @@ impl Player {
             }
         }
 
-        let effective_speed = if self.speed < 50.0 {
-            50.0
-        } else if self.speed > 300.0 {
-            300.0
-        } else {
-            self.speed
-        };
+        let effective_speed = self.speed.clamp(50.0, 300.0);
 
         self.position.x += tmp_action.x() as f64 * delta_time * effective_speed;
         self.position.y += tmp_action.y() as f64 * delta_time * effective_speed;
@@ -351,7 +333,7 @@ impl Player {
     pub fn add_random_effect(&mut self) -> String {
         let effect = Effect::new(
             EffectType::random(),
-            rand::thread_rng().gen_range(3.0f64, 10.0f64),
+            rand::rng().random_range(3.0f64..10.0f64),
         );
         let name = effect.name();
         self.add_effect(effect);
@@ -409,11 +391,11 @@ impl Player {
                 self.set_name(&sanitise_name(&name));
                 self.set_invincible();
                 let spawn_point = world.get_spawn_point();
-                self.set_position(PixelPositionF64::from_map_position(spawn_point, &world));
+                self.set_position(PixelPositionF64::from_map_position(spawn_point, world));
 
-                let available_images = vec!["p1", "p2", "p3", "p4"];
+                let available_images = ["p1", "p2", "p3", "p4"];
                 self.image = (*available_images
-                    .choose(&mut rand::thread_rng())
+                    .choose(&mut rand::rng())
                     .unwrap_or(&"p1"))
                 .to_string();
 
@@ -456,7 +438,7 @@ impl Player {
                 Ok(true)
             }
             CellType::ItemRandom => {
-                let r: u8 = rand::thread_rng().gen_range(0, 10);
+                let r: u8 = rand::rng().random_range(0..10);
                 let mut powerup_name = String::new();
                 match r {
                     0 => {
@@ -506,13 +488,13 @@ impl Player {
                     }
                     7 => {
                         if self.score() > 100 {
-                            let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                            let pwrup: u32 = rand::rng().random_range(1..10) * 10;
                             self.decrease_score(pwrup);
                             powerup_name = "-$".to_owned();
                         }
                     }
                     8 => {
-                        let pwrup: u32 = rand::thread_rng().gen_range(1, 10) * 10;
+                        let pwrup: u32 = rand::rng().random_range(1..10) * 10;
                         self.increase_score(pwrup);
                         powerup_name = "+$".to_owned();
                     }
@@ -543,11 +525,11 @@ impl Player {
             return;
         }
 
-        let map_pos = self.position().to_map_position(&world);
+        let map_pos = self.position().to_map_position(world);
         if let Some(CellType::Wall) = world.get_cell(map_pos) {
             // Oops - we're in a wall. Reposition to nearby blank space.
             let blank = world.find_nearest_blank(map_pos);
-            self.set_position(PixelPositionF64::from_map_position(blank, &world));
+            self.set_position(PixelPositionF64::from_map_position(blank, world));
         }
 
         let mut tmp_action = self.action().clone();
@@ -557,7 +539,7 @@ impl Player {
         let tolerance = world.sizes().tile_size().width as f64 * 0.3;
         if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
-            let target_y = PixelPositionF64::from_map_position(map_pos, &world).y;
+            let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
             if target_y > self.position().y + tolerance {
                 tmp_action.setxy(0, 1);
             } else if target_y < self.position().y - tolerance {
@@ -568,7 +550,7 @@ impl Player {
             }
         } else if tmp_action.y() != 0 {
             // Moving vertically, make sure we're on a gridline.
-            let target_x = PixelPositionF64::from_map_position(map_pos, &world).x;
+            let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
             if target_x > self.position().x + tolerance {
                 tmp_action.setxy(1, 0);
             } else if target_x < self.position().x - tolerance {
@@ -593,7 +575,7 @@ impl Player {
         // Try X movement.
         if tmp_action.x() != 0 {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
-            if !self.can_pass(try_pos, &world) {
+            if !self.can_pass(try_pos, world) {
                 // Can't pass horizontally, so lock X position.
                 let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
                 if (tmp_action.x() < 0 && self.position.x <= target_x)
@@ -608,7 +590,7 @@ impl Player {
         if tmp_action.y() != 0 {
             // Try Y movement.
             let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
-            if !self.can_pass(try_pos, &world) {
+            if !self.can_pass(try_pos, world) {
                 // Can't pass vertically, so lock Y position.
                 let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
                 if (tmp_action.y() < 0 && self.position.y <= target_y)
@@ -632,10 +614,12 @@ impl CanPass for Player {
     }
 }
 
+static SANITISE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[^\w\s,._:'!^*()=\-]+").unwrap());
+
 fn sanitise_name(name: &str) -> String {
-    let r = Regex::new(r"^[^\w\s,._:'!^*()=\-]+$").unwrap();
-    r.replace_all(name, "")
-        .to_string()
+    SANITISE_RE
+        .replace_all(name, "")
         .chars()
         .take(30)
         .collect()

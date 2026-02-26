@@ -15,8 +15,8 @@ use crate::{
     traits::celltypes::CellType,
 };
 use futures::future::join_all;
-use log::*;
-use rand::{seq::SliceRandom, thread_rng, Rng};
+use rand::prelude::*;
+use tracing::{debug, error, info};
 
 use tokio::{
     sync::mpsc::Receiver,
@@ -71,7 +71,7 @@ impl RustonatorGame {
         let mut add_blocks_timer = Instant::now();
         let mut mob_spawn_timer = Instant::now();
 
-        let mut next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
+        let mut next_mob_spawn_seconds = rand::rng().random_range(1.0..60.0);
 
         loop {
             let mut delta_time = last_frame.elapsed().as_secs_f64();
@@ -87,7 +87,7 @@ impl RustonatorGame {
 
                 delta_time = last_frame.elapsed().as_secs_f64();
                 let sleep_time = (min_timeslice - delta_time) * 1_000f64;
-                tokio::time::delay_for(Duration::from_millis(sleep_time as u64)).await;
+                tokio::time::sleep(Duration::from_millis(sleep_time as u64)).await;
                 delta_time = last_frame.elapsed().as_secs_f64();
             }
             last_frame = Instant::now();
@@ -105,7 +105,7 @@ impl RustonatorGame {
                 }
 
                 mob_spawn_timer = Instant::now();
-                next_mob_spawn_seconds = thread_rng().gen_range(1.0, 60.0);
+                next_mob_spawn_seconds = rand::rng().random_range(1.0..60.0);
             }
 
             // Add blocks?
@@ -216,7 +216,7 @@ impl RustonatorGame {
             .map(|m| m.position().to_map_position(&self.world))
             .collect();
         let mut spawners = self.mob_spawners.clone();
-        spawners.shuffle(&mut rand::thread_rng());
+        spawners.shuffle(&mut rand::rng());
         for spawner in spawners {
             if !self
                 .world
@@ -242,24 +242,20 @@ impl RustonatorGame {
             if let Some(InternalCellData::Explosion(explosion_id)) = self
                 .world
                 .get_internal_cell(mob.position().to_map_position(&self.world))
-            {
-                if let Some(explosion) = self.explosions.get(*explosion_id) {
-                    if explosion.is_harmful() {
+                && let Some(explosion) = self.explosions.get(*explosion_id)
+                    && explosion.is_harmful() {
                         mob.terminate();
 
                         // Award points to the player that killed this mob.
-                        if let Some(p) = self.players.get_mut(&explosion.pid()) {
-                            if !p.is_dead() {
+                        if let Some(p) = self.players.get_mut(&explosion.pid())
+                            && !p.is_dead() {
                                 if mob.is_smart() {
                                     p.increase_score(2000);
                                 } else {
                                     p.increase_score(500);
                                 }
                             }
-                        }
                     }
-                }
-            }
         }
 
         // Remove dead mobs.
@@ -362,9 +358,8 @@ impl RustonatorGame {
                 // Explosion?
                 if let Some(InternalCellData::Explosion(explosion_id)) =
                     self.world.get_internal_cell(map_pos)
-                {
-                    if let Some(explosion) = self.explosions.get(*explosion_id) {
-                        if explosion.is_harmful() {
+                    && let Some(explosion) = self.explosions.get(*explosion_id)
+                        && explosion.is_harmful() {
                             died = true;
 
                             // Award points to the player that killed this mob.
@@ -395,8 +390,6 @@ impl RustonatorGame {
                                 );
                             }
                         }
-                    }
-                }
             }
         }
 

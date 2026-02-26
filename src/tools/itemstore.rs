@@ -28,6 +28,10 @@ impl<I: Clone + From<u64> + Debug + Hash + Eq, T: HasId<I>> ItemStore<I, T> {
         self.items.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     fn get_next_id(&mut self) -> I {
         let next = self.next_id;
         self.next_id += 1;
