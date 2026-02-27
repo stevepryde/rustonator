@@ -54,10 +54,10 @@ export default function ScoreBoard({ scores, variant }: ScoreBoardProps) {
         <button
           type="button"
           onClick={() => setTab("month")}
-          className={`bg-transparent border border-retro-green-dark px-4 py-1.5 cursor-pointer text-sm rounded transition-colors ${
+          className={`border border-retro-green-dark px-4 py-1.5 cursor-pointer text-sm rounded transition-all ${
             tab === "month"
-              ? "bg-retro-green-dark text-black font-bold"
-              : "text-gray-400 hover:text-white"
+              ? "bg-retro-green-dark text-black font-bold shadow-[0_0_8px_var(--color-retro-green-glow)] border-retro-green-glow"
+              : "bg-transparent text-gray-400 hover:text-white"
           }`}
         >
           This Month
@@ -65,10 +65,10 @@ export default function ScoreBoard({ scores, variant }: ScoreBoardProps) {
         <button
           type="button"
           onClick={() => setTab("alltime")}
-          className={`bg-transparent border border-retro-green-dark px-4 py-1.5 cursor-pointer text-sm rounded transition-colors ${
+          className={`border border-retro-green-dark px-4 py-1.5 cursor-pointer text-sm rounded transition-all ${
             tab === "alltime"
-              ? "bg-retro-green-dark text-black font-bold"
-              : "text-gray-400 hover:text-white"
+              ? "bg-retro-green-dark text-black font-bold shadow-[0_0_8px_var(--color-retro-green-glow)] border-retro-green-glow"
+              : "bg-transparent text-gray-400 hover:text-white"
           }`}
         >
           All Time

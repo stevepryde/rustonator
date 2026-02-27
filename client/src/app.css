@@ -70,7 +70,7 @@
   .btn-solid:hover {
     background: var(--color-retro-green);
     outline: none;
-    box-shadow: none;
+    box-shadow: 0 0 12px var(--color-retro-green-glow);
   }
 
   .btn-glow {
