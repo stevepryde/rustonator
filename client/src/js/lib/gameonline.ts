@@ -77,7 +77,6 @@ export class DetonatorGameOnline extends DetonatorGame {
 
   setupSocket(socket: WebSocket): void {
     socket.onopen = (event) => {
-      console.log("Connected");
       let msg = JSON.stringify({"data": {"code": "JOINGAME", "data": this.playerName}});
       if (this.socket) {
         this.socket.send(msg);
@@ -91,7 +90,6 @@ export class DetonatorGameOnline extends DetonatorGame {
         let payload = JSON.parse(event.data).data;
         this.handleMessage(payload.code, payload.data);
       } catch (err) {
-        console.log("Parse error: " + err + "\n" + event.data);
         return;
       }
     };
@@ -101,7 +99,6 @@ export class DetonatorGameOnline extends DetonatorGame {
     switch (code) {
       case "SPAWNPLAYER": {
         let [playerData, worldData] = data;
-        console.log(playerData);
         this.spawnPlayer(playerData);
         this.createWorld(worldData);
         this.joined = true;
@@ -125,9 +122,6 @@ export class DetonatorGameOnline extends DetonatorGame {
       }
       case "DEAD": {
         this.playerDied(data);
-        setTimeout(() => {
-          this.socket?.close();
-        }, 2000);
         break;
       }
       case "PONG": {
@@ -165,7 +159,7 @@ export class DetonatorGameOnline extends DetonatorGame {
     this.socket.send(msg);
   }
 
-  update() {
+  update(time: number, delta: number) {
     // Ping every 2 seconds.
     if (this.lagCounter++ > targetFPS * 2) {
 
@@ -176,6 +170,6 @@ export class DetonatorGameOnline extends DetonatorGame {
       this.lagCounter = 0;
     }
 
-    super.update();
+    super.update(time, delta);
   }
 }

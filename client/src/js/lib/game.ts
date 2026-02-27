@@ -1,33 +1,17 @@
 import Phaser from "phaser";
-import {IMG_PREFIX, setElementDisplay, WebUIManager, withElement} from "./web";
-import GameConfig from "./common/config";
-import {Player, PlayerData} from "./common/player";
-import {Action, ActionData} from "./common/action";
-import {ChunkData, World, WorldData} from "./common/world";
-import {ObjectPool} from "./objectpool";
-import {Mob, MobData} from "./common/mob";
-import {BombData} from "./common/bomb";
-import {ExplosionData} from "./common/explosion";
-import {StateMachine} from "./statemachine";
-import {EffectType} from "./common/effect";
-import {PlayerFlags} from "./common/playerflags";
+import { IMG_PREFIX, setElementDisplay, WebUIManager, withElement } from "./web";
+import { Player, PlayerData } from "./common/player";
+import { Action, ActionData } from "./common/action";
+import { ChunkData, World, WorldData } from "./common/world";
+import { ObjectPool } from "./objectpool";
+import { Mob, MobData } from "./common/mob";
+import { BombData } from "./common/bomb";
+import { ExplosionData } from "./common/explosion";
+import { StateMachine } from "./statemachine";
+import { EffectType } from "./common/effect";
+import { PlayerFlags } from "./common/playerflags";
 
 export const targetFPS = 30;
-const GAME_DEBUG = false;
-
-let DEBUG_LOG: any = {};
-let FPS_COUNT: number = 0;
-let FPS_INPUT_COUNT: number = 0;
-if (GAME_DEBUG) {
-    setInterval(() => {
-        console.log("DEBUG: " + JSON.stringify(DEBUG_LOG));
-        console.log("FPS: " + FPS_COUNT);
-        console.log("FPS(INPUT): " + FPS_INPUT_COUNT);
-
-        FPS_COUNT = 0;
-        FPS_INPUT_COUNT = 0;
-    }, 1000);
-}
 
 export enum GameState {
     Menu = 0,
@@ -114,7 +98,7 @@ export class DetonatorGame extends Phaser.Scene {
     curPlayer: Player | null = null;
     curAction: ActionData | null = null;
     isDead: boolean = false;
-    deadCounter: number = targetFPS * 3; // wait for 3 seconds before exiting game.
+    deadCounter: number = targetFPS * 2; // wait for 2 seconds before exiting game.
     quitFlag: boolean = false;
     deadSprite: Phaser.GameObjects.Sprite | null = null;
     actionList: ActionData[] = [];
@@ -211,12 +195,12 @@ export class DetonatorGame extends Phaser.Scene {
             width: this.canvasInfo.width,
             height: this.canvasInfo.height,
             parent: "gameCanvas",
-            pixelArt: true,
+            pixelArt: false,
             backgroundColor: "#000000",
             scene: this,
             scale: {
                 mode: Phaser.Scale.FIT,
-                autoCenter: Phaser.Scale.CENTER_BOTH
+                autoCenter: Phaser.Scale.NO_CENTER
             },
             input: {
                 keyboard: true,
@@ -228,45 +212,10 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     getCanvasInfo(): CanvasInfo {
-        let gameConfig = new GameConfig();
-        let screenX = gameConfig.screenX;
-        let screenY = gameConfig.screenY;
-
-        // Phaser.CANVAS is faster on firefox, AUTO is faster on chrome.
-        // It seems that Chrome is the only browser that actually works well with
-        // webGL - so use canvas for all others.
-        let canvasType = Phaser.CANVAS;
-
-        if (this.uiManager.isChrome()) {
-            canvasType = Phaser.AUTO;
-        }
-
-        // Browser detection from here:
-        // http://stackoverflow.com/questions/9847580/how-to-detect-safari-chrome-ie-firefox-and-opera-browser
-        if (this.uiManager.isMobile()) {
-            // adjust screen size to fit aspect ratio.
-            let aspect = window.screen.width / window.screen.height;
-
-            if (aspect < 1) {
-                // phone is in portrait mode.
-                aspect = window.screen.height / window.screen.width;
-            }
-
-            if (aspect > 1.33) {
-                // reduce screenY to fit actual screen aspect.
-                screenX = gameConfig.screenX;
-                screenY = screenX * (1.0 / aspect);
-            } else {
-                // reduce screenX to fit actual screen aspect.
-                screenY = gameConfig.screenY;
-                screenX = screenY * aspect;
-            }
-        }
-
         return {
-            width: screenX,
-            height: screenY,
-            canvasType: canvasType
+            width: 800,
+            height: 600,
+            canvasType: Phaser.AUTO
         };
     }
 
@@ -511,8 +460,6 @@ export class DetonatorGame extends Phaser.Scene {
             return;
         }
 
-        FPS_COUNT++;
-
         this.curClientMS = time;
         if (this.lastClientMS === 0) {
             this.lastClientMS = this.curClientMS - 1000 / targetFPS;
@@ -534,7 +481,6 @@ export class DetonatorGame extends Phaser.Scene {
 
         if (this.clientElapsedMS >= this.minMS) {
 
-            FPS_INPUT_COUNT++;
             this.lastClientMS = this.curClientMS;
             if (!this.curAction) {
                 this.curAction = new Action().toJSON();
@@ -588,6 +534,7 @@ export class DetonatorGame extends Phaser.Scene {
                 if (this.curPlayer) {
                     if (this.curPlayer.id in this.playerSprites) {
                         this.deadSprite = this.playerSprites[this.curPlayer.id];
+                        this.deadSprite.stop();
                     } else {
                         this.deadSprite = this.add.sprite(
                             this.curPlayer.x,
@@ -604,20 +551,24 @@ export class DetonatorGame extends Phaser.Scene {
                 }
             }
 
-            // Fly away...
+            // Ghost float away...
             if (this.deadSprite) {
-                this.deadSprite.y -= 0.5;
-                this.deadSprite.alpha -= 0.01;
-                if (this.deadSprite.alpha <= 0) {
-                    this.deadSprite.alpha = 0;
+                this.deadSprite.y -= 1.5;
+                if (this.deadSprite.alpha > 0.15) {
+                    this.deadSprite.alpha -= 0.04;
                 }
-                this.deadSprite.scaleX *= 1.05;
-                this.deadSprite.scaleY *= 1.05;
+                // Gentle scale-up to ~1.3x, preserving flip direction.
+                let sign = this.deadSprite.scaleX < 0 ? -1 : 1;
+                if (Math.abs(this.deadSprite.scaleX) < 10.0) {
+                    this.deadSprite.scaleX += sign * 0.05;
+                    this.deadSprite.scaleY += 0.05;
+                }
             }
 
             this.deadCounter--;
             if (this.deadCounter <= 0) {
                 this.quitFlag = true;
+                this.quitGame();
             }
         }
     }
@@ -797,9 +748,9 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     playerDied(data: string): void {
-        // We died. Too bad so sad.
         this.isDead = true;
         this.deadReason = data;
+        this.cameras.main.stopFollow();
     }
 
     updateStatus(): void {
@@ -1207,18 +1158,20 @@ export class DetonatorGame extends Phaser.Scene {
                     this.movePlayerName(kPlayer);
                 }
 
-                // Invincibility?
-                if (kPlayer.hasFlag(PlayerFlags.Invincible) && this.flickerToggle) {
-                    let remaining = 10.0;
-                    for (let effect of kPlayer.effects) {
-                        if (effect.effectType === EffectType.Invincibility) {
-                            remaining = effect.remaining;
-                            break;
+                // Invincibility? (skip if dead — death animation controls alpha)
+                if (!this.isDead || !(this.curPlayer && pid === this.curPlayer.id)) {
+                    if (kPlayer.hasFlag(PlayerFlags.Invincible) && this.flickerToggle) {
+                        let remaining = 10.0;
+                        for (let effect of kPlayer.effects) {
+                            if (effect.effectType === EffectType.Invincibility) {
+                                remaining = effect.remaining;
+                                break;
+                            }
                         }
+                        this.playerSprites[pid].alpha = remaining < 5.0 ? 0.5 : 0.1;
+                    } else {
+                        this.playerSprites[pid].alpha = 1;
                     }
-                    this.playerSprites[pid].alpha = remaining < 5.0 ? 0.5 : 0.1;
-                } else {
-                    this.playerSprites[pid].alpha = 1;
                 }
             } else {
                 // spawn new sprite for this player.
