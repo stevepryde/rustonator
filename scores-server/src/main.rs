@@ -59,10 +59,8 @@ async fn main() {
         )
         .init();
 
-    let secret =
-        std::env::var("SCORES_SECRET").unwrap_or_else(|_| "dev-secret".to_string());
-    let scores_file =
-        std::env::var("SCORES_FILE").unwrap_or_else(|_| "scores.json".to_string());
+    let secret = std::env::var("SCORES_SECRET").unwrap_or_else(|_| "dev-secret".to_string());
+    let scores_file = std::env::var("SCORES_FILE").unwrap_or_else(|_| "scores.json".to_string());
 
     let state = Arc::new(AppState {
         store: store::ScoreStore::new(PathBuf::from(scores_file)),
@@ -70,8 +68,7 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/api/scores", get(get_scores))
-        .route("/api/scores", post(post_score))
+        .route("/api/scores", get(get_scores).post(post_score))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

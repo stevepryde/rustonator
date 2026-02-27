@@ -64,7 +64,7 @@ export class DetonatorGameOnline extends DetonatorGame {
     super.create();
 
     // Init socket.
-    const wsPath = import.meta.env.VITE_GAME_SERVER ? "" : "/ws";
+    const wsPath = import.meta.env.DEV ? "" : "/ws";
     if (this.serverSSL) {
       this.socket = new WebSocket("wss://" + this.serverAddress + wsPath, []);
     } else {

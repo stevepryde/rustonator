@@ -77,20 +77,18 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          SSH="ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST"
+          SSH="ssh -T -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST"
           SCP="scp -i ~/.ssh/deploy_key"
           DEST="$DEPLOY_USER@$DEPLOY_HOST"
 
           $SCP target/release/$BINARY env_file infra/systemd/app.service "$DEST:/tmp/"
 
-          $SSH <<ENDSSH
-            sudo mkdir -p /etc/$SERVICE
-            sudo mv /tmp/$BINARY /usr/local/bin/$BINARY && sudo chmod +x /usr/local/bin/$BINARY
-            sudo mv /tmp/env_file /etc/$SERVICE/.env && sudo chmod 600 /etc/$SERVICE/.env
-            sudo sed -i 's/%i/$SERVICE/g' /tmp/app.service
-            sudo mv /tmp/app.service /etc/systemd/system/$SERVICE.service
-            sudo systemctl daemon-reload && sudo systemctl enable $SERVICE && sudo systemctl restart $SERVICE
-          ENDSSH
+          $SSH "sudo mkdir -p /etc/$SERVICE"
+          $SSH "sudo mv /tmp/$BINARY /usr/local/bin/$BINARY && sudo chmod +x /usr/local/bin/$BINARY"
+          $SSH "sudo mv /tmp/env_file /etc/$SERVICE/.env && sudo chmod 600 /etc/$SERVICE/.env"
+          $SSH "sudo sed -i 's/%i/$SERVICE/g' /tmp/app.service"
+          $SSH "sudo mv /tmp/app.service /etc/systemd/system/$SERVICE.service"
+          $SSH "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE && sudo systemctl restart $SERVICE"
 
       - name: Clean up
         if: always()

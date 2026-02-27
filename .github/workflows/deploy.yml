@@ -58,6 +58,10 @@ jobs:
 
       - name: Build client
         working-directory: client
+        env:
+          VITE_SCORES_URL: ${{ vars.VITE_SCORES_URL }}
+          VITE_GAME_SERVER: ${{ vars.VITE_GAME_SERVER }}
+          VITE_GAME_SERVER_SSL: "1"
         run: bun run build
 
       - name: Deploy to Cloudflare Pages
