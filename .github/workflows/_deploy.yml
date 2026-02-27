@@ -52,9 +52,7 @@ jobs:
 
       - name: Write env file
         run: |
-          cat <<'EOF' > env_file
-          ${{ inputs.env_vars }}
-          EOF
+          printf '%s\n' '${{ inputs.env_vars }}' > env_file
           echo "SCORES_SECRET=${{ secrets.SCORES_SECRET }}" >> env_file
 
       - name: Set up SSH
@@ -81,13 +79,15 @@ jobs:
           SCP="scp -i ~/.ssh/deploy_key"
           DEST="$DEPLOY_USER@$DEPLOY_HOST"
 
-          $SCP target/release/$BINARY env_file infra/systemd/app.service "$DEST:/tmp/"
+          $SCP target/release/$BINARY "$DEST:/tmp/${SERVICE}_binary"
+          $SCP env_file "$DEST:/tmp/${SERVICE}.env"
+          $SCP infra/systemd/app.service "$DEST:/tmp/${SERVICE}_app.service"
 
           $SSH "sudo mkdir -p /etc/$SERVICE"
-          $SSH "sudo mv /tmp/$BINARY /usr/local/bin/$BINARY && sudo chmod +x /usr/local/bin/$BINARY"
-          $SSH "sudo mv /tmp/env_file /etc/$SERVICE/.env && sudo chmod 600 /etc/$SERVICE/.env"
-          $SSH "sudo sed -i 's/%i/$SERVICE/g' /tmp/app.service"
-          $SSH "sudo mv /tmp/app.service /etc/systemd/system/$SERVICE.service"
+          $SSH "sudo mv /tmp/${SERVICE}_binary /usr/local/bin/$BINARY && sudo chmod +x /usr/local/bin/$BINARY"
+          $SSH "sudo mv /tmp/${SERVICE}.env /etc/$SERVICE/.env && sudo chmod 600 /etc/$SERVICE/.env"
+          $SSH "sudo sed -i 's/%i/$SERVICE/g' /tmp/${SERVICE}_app.service"
+          $SSH "sudo mv /tmp/${SERVICE}_app.service /etc/systemd/system/$SERVICE.service"
           $SSH "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE && sudo systemctl restart $SERVICE"
 
       - name: Clean up
