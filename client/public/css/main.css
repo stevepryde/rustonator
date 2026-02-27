@@ -119,6 +119,13 @@ a:hover {
     z-index: 20;
 }
 
+.ds-center-box-wide {
+    margin-top: 20px;
+    width: 660px;
+    max-width: 90vw;
+    z-index: 20;
+}
+
 .ds-ad {
     text-align: center;
     font-size: 10px;
