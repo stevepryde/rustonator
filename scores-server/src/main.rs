@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::get,
 };
 use rustrict::CensorStr;
 use serde::Deserialize;

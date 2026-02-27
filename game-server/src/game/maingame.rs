@@ -84,18 +84,44 @@ impl RustonatorGame {
 
         let mut next_mob_spawn_seconds = rand::rng().random_range(1.0..60.0);
 
+        let idle_cooldown = Duration::from_secs(30);
+        let mut idle_since: Option<Instant> = None;
+        let mut paused = true;
+        info!("Game loop starting paused, waiting for players");
+
         loop {
+            // Pause when no players for 30 seconds.
+            if self.players.is_empty() {
+                if let Some(since) = idle_since {
+                    if since.elapsed() >= idle_cooldown && !paused {
+                        info!("No players for 30s, pausing game loop");
+                        paused = true;
+                    }
+                } else {
+                    idle_since = Some(Instant::now());
+                }
+            } else {
+                idle_since = None;
+                if paused {
+                    info!("Player connected, resuming game loop");
+                    paused = false;
+                    last_frame = Instant::now();
+                    first_frame = Instant::now();
+                    count = 0;
+                }
+            }
+
+            if paused {
+                // Block until a player connects — zero CPU.
+                match player_join_rx.recv().await {
+                    Some(event) => self.handle_connect_event(event),
+                    None => break,
+                }
+                continue;
+            }
+
             let mut delta_time = last_frame.elapsed().as_secs_f64();
             if delta_time < min_timeslice {
-                // Only allow new players if we have time.
-
-                // NOTE: We need to use an async delay here just in case the server
-                //       happens to be running on a single thread.
-                //       If performance suffers, we could check for the number of
-                //       CPU cores / tokio threads on startup and switch to using
-                //       thread::sleep() here in the case where multiple threads
-                //       are supported.
-
                 delta_time = last_frame.elapsed().as_secs_f64();
                 let sleep_time = (min_timeslice - delta_time) * 1_000f64;
                 tokio::time::sleep(Duration::from_millis(sleep_time as u64)).await;
@@ -144,24 +170,29 @@ impl RustonatorGame {
                 first_frame = Instant::now();
             }
         }
+
+        Ok(())
+    }
+
+    fn handle_connect_event(&mut self, event: PlayerConnectEvent) {
+        match event {
+            PlayerConnectEvent::Connected(p) => {
+                info!("Player connected: {:?}", p);
+                self.players.insert(p.id(), Player::new(p.id(), p));
+            }
+            PlayerConnectEvent::Disconnected(pid) => {
+                info!("Player {:?} disconnected", pid);
+                if let Some(player) = self.players.get(&pid) {
+                    self.submit_score(player);
+                }
+                self.players.retain(|player_id, _| player_id != &pid);
+            }
+        }
     }
 
     pub async fn player_connect_events(&mut self, players_rx: &mut Receiver<PlayerConnectEvent>) {
-        // Have any players joined?
-        if let Ok(x) = players_rx.try_recv() {
-            match x {
-                PlayerConnectEvent::Connected(p) => {
-                    info!("Player connected: {:?}", p);
-                    self.players.insert(p.id(), Player::new(p.id(), p));
-                }
-                PlayerConnectEvent::Disconnected(pid) => {
-                    info!("Player {:?} disconnected", pid);
-                    if let Some(player) = self.players.get(&pid) {
-                        self.submit_score(player);
-                    }
-                    self.players.retain(|player_id, _| player_id != &pid);
-                }
-            }
+        if let Ok(event) = players_rx.try_recv() {
+            self.handle_connect_event(event);
         }
     }
 
