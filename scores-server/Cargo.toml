@@ -1,7 +1,7 @@
 [package]
 authors = ["Steve Pryde <spryde81@gmail.com>"]
 edition = "2024"
-name = "scores-server"
+name = "scores_server"
 version = "0.1.0"
 
 [dependencies]
