@@ -186,3 +186,96 @@ export class WebUIManager {
     this.showMobBanner();
   }
 }
+
+export interface ScoreEntry {
+  name: string;
+  score: number;
+  timestamp: number;
+}
+
+export interface ScoreBuckets {
+  today: ScoreEntry[];
+  month: ScoreEntry[];
+  all_time: ScoreEntry[];
+}
+
+const SCORES_URL = "http://127.0.0.1:9003";
+
+export async function fetchScores(): Promise<ScoreBuckets | null> {
+  try {
+    const res = await fetch(`${SCORES_URL}/api/scores`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function renderScoreTable(entries: ScoreEntry[]): string {
+  let html = "<table class='scorebox' style='width:100%;max-width:100%;'>";
+  for (let i = 0; i < 10; i++) {
+    const entry = entries[i];
+    if (entry) {
+      html += `<tr><td class='num'>${i + 1}.</td><td class='name'>${escapeHtml(entry.name)}</td><td class='score'>${entry.score}</td></tr>`;
+    } else {
+      html += `<tr><td class='num'>${i + 1}.</td><td class='name'>---</td><td class='score'>-</td></tr>`;
+    }
+  }
+  html += "</table>";
+  return html;
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+export function renderTodayScores(data: ScoreBuckets, container: HTMLElement): void {
+  let html = "<div class='high-scores'>";
+  html += "<h3 class='high-scores-title'>TODAY</h3>";
+  html += renderScoreTable(data.today);
+  html += "</div>";
+  container.innerHTML = html;
+}
+
+export function renderTopScores(data: ScoreBuckets, container: HTMLElement): void {
+  let html = "<div class='high-scores'>";
+  html += "<div class='high-scores-tabs'>";
+  html += "<button class='high-scores-tab active' data-tab='month'>This Month</button>";
+  html += "<button class='high-scores-tab' data-tab='alltime'>All Time</button>";
+  html += "</div>";
+  html += `<div class='high-scores-panel' data-panel='month'>${renderScoreTable(data.month)}</div>`;
+  html += `<div class='high-scores-panel' data-panel='alltime' style='display:none;'>${renderScoreTable(data.all_time)}</div>`;
+  html += "</div>";
+  container.innerHTML = html;
+
+  container.querySelectorAll(".high-scores-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = (btn as HTMLElement).dataset.tab;
+      container.querySelectorAll(".high-scores-tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      container.querySelectorAll(".high-scores-panel").forEach((p) => {
+        (p as HTMLElement).style.display = (p as HTMLElement).dataset.panel === tab ? "block" : "none";
+      });
+    });
+  });
+}
+
+const EMPTY_SCORES: ScoreBuckets = { today: [], month: [], all_time: [] };
+
+export async function fetchAndRenderAllScores(todayId: string, topId: string): Promise<void> {
+  const todayContainer = document.getElementById(todayId);
+  const topContainer = document.getElementById(topId);
+  if (!todayContainer && !topContainer) return;
+
+  // Render empty tables immediately so boxes are always visible.
+  if (todayContainer) renderTodayScores(EMPTY_SCORES, todayContainer);
+  if (topContainer) renderTopScores(EMPTY_SCORES, topContainer);
+
+  const data = await fetchScores();
+  if (data) {
+    if (todayContainer) renderTodayScores(data, todayContainer);
+    if (topContainer) renderTopScores(data, topContainer);
+  }
+}

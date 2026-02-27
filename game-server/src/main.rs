@@ -63,7 +63,7 @@ fn init_logging() {
         .with_level(true)
         .with_env_filter(
             tracing_subscriber::EnvFilter::builder()
-                .with_default_directive("rustonator=debug".parse().unwrap())
+                .with_default_directive("game_server=debug".parse().unwrap())
                 .from_env_lossy(),
         )
         .init();

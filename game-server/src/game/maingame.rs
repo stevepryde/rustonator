@@ -16,7 +16,7 @@ use crate::{
 };
 use futures::future::join_all;
 use rand::prelude::*;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use tokio::{
     sync::mpsc::Receiver,
@@ -32,6 +32,9 @@ pub struct RustonatorGame {
     mob_spawners: Vec<MobSpawner>,
     bombs: BombList,
     explosions: ExplosionList,
+    http_client: reqwest::Client,
+    scores_url: String,
+    scores_secret: String,
 }
 
 impl RustonatorGame {
@@ -40,6 +43,11 @@ impl RustonatorGame {
         let mut world = World::new(width as i32, height as i32, &config);
         let mob_spawners = world.add_mob_spawners();
         world.populate_initial(&[]);
+
+        let scores_url = std::env::var("SCORES_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:9003".to_string());
+        let scores_secret = std::env::var("SCORES_SECRET")
+            .unwrap_or_else(|_| "dev-secret".to_string());
 
         Self {
             width,
@@ -50,6 +58,9 @@ impl RustonatorGame {
             mob_spawners,
             bombs: BombList::new(),
             explosions: ExplosionList::new(),
+            http_client: reqwest::Client::new(),
+            scores_url,
+            scores_secret,
         }
     }
 
@@ -145,6 +156,9 @@ impl RustonatorGame {
                 }
                 PlayerConnectEvent::Disconnected(pid) => {
                     info!("Player {:?} disconnected", pid);
+                    if let Some(player) = self.players.get(&pid) {
+                        self.submit_score(player);
+                    }
                     self.players.retain(|player_id, _| player_id != &pid);
                 }
             }
@@ -160,6 +174,9 @@ impl RustonatorGame {
         }
 
         for q in quit {
+            if let Some(player) = self.players.get(&q) {
+                self.submit_score(player);
+            }
             self.players.retain(|player_id, _| player_id != &q);
         }
     }
@@ -406,6 +423,8 @@ impl RustonatorGame {
             );
             player.terminate();
             player.ws().send(PlayerMessage::Dead(reason)).await?;
+
+            self.submit_score(player);
         }
 
         Ok(())
@@ -468,5 +487,28 @@ impl RustonatorGame {
 
         player.ws().send(PlayerMessage::FrameData(ser_data)).await?;
         Ok(())
+    }
+
+    fn submit_score(&self, player: &Player) {
+        if player.score() == 0 || player.name().is_empty() {
+            return;
+        }
+
+        let client = self.http_client.clone();
+        let url = format!("{}/api/scores", self.scores_url);
+        let secret = self.scores_secret.clone();
+        let name = player.name().to_string();
+        let score = player.score();
+        tokio::spawn(async move {
+            let res = client
+                .post(&url)
+                .bearer_auth(&secret)
+                .json(&serde_json::json!({ "name": name, "score": score }))
+                .send()
+                .await;
+            if let Err(e) = res {
+                warn!("Failed to submit score: {e}");
+            }
+        });
     }
 }

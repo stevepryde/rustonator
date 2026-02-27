@@ -1,4 +1,4 @@
-import { withElement, setElementDisplay, WebUIManager, ModalData } from "./lib/web";
+import { withElement, setElementDisplay, WebUIManager, ModalData, fetchAndRenderAllScores } from "./lib/web";
 import { DetonatorGame, GameState } from "./lib/game";
 import { DetonatorGameOnline } from "./lib/gameonline";
 import { StateMachine } from "./lib/statemachine";
@@ -19,7 +19,7 @@ function validNick(playerNameInput: HTMLInputElement): boolean {
 
     let regex = /^[\w\s,._:'!^*()=-]+$/;
 
-    if (playerNameInput.value.length > 20) {
+    if (playerNameInput.value.length > 30) {
         return false;
     }
 
@@ -75,15 +75,15 @@ withElement("respawnBtn", (respawnBtn) => {
 
 let display: { [x: string]: string } = {
     extrainfo: "block",
-    appbuttons: "block",
     mobileMenu: "none"
 };
 if (uiManager.isMobile()) {
-    display = { extrainfo: "none", appbuttons: "none", mobileMenu: "block" };
+    display = { extrainfo: "none", mobileMenu: "block" };
 }
 setElementDisplay(display);
 
 uiManager.showMobBanner(false); // don't fade out.
+fetchAndRenderAllScores("todayScores", "topScores");
 
 // Allow user to break out of iframe...
 let isiframe = false;

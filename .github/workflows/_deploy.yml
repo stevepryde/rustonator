@@ -1,0 +1,90 @@
+# Reusable deployment workflow for Rust services.
+#
+# Required GitHub Actions secrets:
+#   DEPLOY_SSH_KEY  — private SSH key for accessing the server
+#   DEPLOY_HOST     — server hostname or IP
+#   DEPLOY_USER     — SSH user on the server
+#
+name: _deploy
+
+on:
+  workflow_call:
+    inputs:
+      cargo_package:
+        description: "Cargo package name (e.g. game-server)"
+        required: true
+        type: string
+      env_content:
+        description: "Contents of the .env file (KEY=VALUE lines)"
+        required: true
+        type: string
+      service_name:
+        description: "Systemd service name on the server"
+        required: true
+        type: string
+    secrets:
+      DEPLOY_SSH_KEY:
+        required: true
+      DEPLOY_HOST:
+        required: true
+      DEPLOY_USER:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ inputs.cargo_package }}
+
+      - name: Build release binary
+        run: cargo build --release -p ${{ inputs.cargo_package }}
+
+      - name: Write env file
+        run: echo "${{ inputs.env_content }}" > env_file
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Derive binary name
+        id: bin
+        run: |
+          BINARY_NAME=$(echo "${{ inputs.cargo_package }}" | tr '-' '_')
+          echo "name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to server
+        env:
+          SERVICE: ${{ inputs.service_name }}
+          BINARY: ${{ steps.bin.outputs.name }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST"
+          SCP="scp -i ~/.ssh/deploy_key"
+          DEST="$DEPLOY_USER@$DEPLOY_HOST"
+
+          $SCP target/release/$BINARY env_file infra/systemd/app.service "$DEST:/tmp/"
+
+          $SSH <<ENDSSH
+            sudo mkdir -p /etc/$SERVICE
+            sudo mv /tmp/$BINARY /usr/local/bin/$BINARY && sudo chmod +x /usr/local/bin/$BINARY
+            sudo mv /tmp/env_file /etc/$SERVICE/.env && sudo chmod 600 /etc/$SERVICE/.env
+            sudo sed -i 's/%i/$SERVICE/g' /tmp/app.service
+            sudo mv /tmp/app.service /etc/systemd/system/$SERVICE.service
+            sudo systemctl daemon-reload && sudo systemctl enable $SERVICE && sudo systemctl restart $SERVICE
+          ENDSSH
+
+      - name: Clean up
+        if: always()
+        run: rm -f env_file ~/.ssh/deploy_key

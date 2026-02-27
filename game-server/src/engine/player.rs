@@ -17,6 +17,7 @@ use crate::{
 };
 use rand::prelude::*;
 use regex::Regex;
+use rustrict::CensorStr;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::LazyLock;
@@ -256,6 +257,7 @@ impl Player {
     }
 
     pub fn terminate(&mut self) {
+        self.active = false;
         self.state = PlayerState::Dying;
     }
 
@@ -618,9 +620,10 @@ static SANITISE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[^\w\s,._:'!^*()=\-]+").unwrap());
 
 fn sanitise_name(name: &str) -> String {
-    SANITISE_RE
+    let cleaned: String = SANITISE_RE
         .replace_all(name, "")
         .chars()
         .take(30)
-        .collect()
+        .collect();
+    cleaned.censor()
 }

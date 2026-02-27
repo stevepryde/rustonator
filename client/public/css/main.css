@@ -53,7 +53,7 @@ a:hover {
 }
 
 #menuimg {
-    width: 480px;
+    width: 360px;
 }
 
 
@@ -173,7 +173,7 @@ a:hover {
 .scorebox {
     width: 25%;
     max-width: 400px;
-    font-size: 14px;
+    font-size: 16px;
     text-align: center;
     font-weight: bold;
     color: white;
@@ -184,8 +184,8 @@ a:hover {
     width: 5%;
     text-align: left;
     vertical-align: top;
-    padding: 1px 3px;
-    font-size: 12px;
+    padding: 4px 6px;
+    font-size: 16px;
 }
 
 .scorebox td.name {
@@ -193,16 +193,16 @@ a:hover {
     text-align: left;
     vertical-align: top;
     word-wrap: break-word;
-    padding: 1px 3px;
-    font-size: 12px;
+    padding: 4px 6px;
+    font-size: 16px;
 }
 
 .scorebox td.score {
     width: 20%;
     text-align: right;
     vertical-align: top;
-    padding: 1px 3px;
-    font-size: 12px;
+    padding: 4px 6px;
+    font-size: 16px;
 }
 
 .ds-align-left {
@@ -586,4 +586,66 @@ td {
     left: 100px;
     margin: auto;
     z-index: 3;
+}
+
+#todayScores {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 360px;
+    z-index: 20;
+}
+
+#topScores {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 360px;
+    z-index: 20;
+}
+
+.high-scores {
+    text-align: center;
+    color: white;
+    font-family: 'Raleway', sans-serif;
+}
+
+.high-scores-title {
+    font-size: 20px;
+    font-weight: bold;
+    margin: 0 0 10px 0;
+    color: #5ee65c;
+}
+
+.high-scores-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.high-scores-tab {
+    background: transparent;
+    border: 1px solid #4bb849;
+    color: #aaa;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-size: 16px;
+    font-family: 'Raleway', sans-serif;
+    border-radius: 3px;
+}
+
+.high-scores-tab.active {
+    background: #4bb849;
+    color: black;
+    font-weight: bold;
+}
+
+.high-scores-tab:hover {
+    color: white;
+}
+
+.high-scores-panel .scorebox {
+    width: 100%;
+    max-width: 100%;
 }

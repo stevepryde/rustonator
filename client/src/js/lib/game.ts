@@ -149,6 +149,7 @@ export class DetonatorGame extends Phaser.Scene {
     leaderboardNames: Phaser.GameObjects.Text[] = [];
     leaderboardScores: Phaser.GameObjects.Text[] = [];
     leaderboardShade: Phaser.GameObjects.Image | null = null;
+    dyingSprites: Phaser.GameObjects.Sprite[] = [];
     scoreShade: Phaser.GameObjects.Image | null = null;
     scoreText: Phaser.GameObjects.Text | null = null;
 
@@ -291,6 +292,7 @@ export class DetonatorGame extends Phaser.Scene {
         this.scoreText = null;
         this.leaderboardNames = [];
         this.leaderboardScores = [];
+        this.dyingSprites = [];
 
         if (this.phaserGame) {
             this.phaserGame.destroy(true);
@@ -571,6 +573,22 @@ export class DetonatorGame extends Phaser.Scene {
                 this.quitGame();
             }
         }
+
+        // Animate dying other-player sprites.
+        this.dyingSprites = this.dyingSprites.filter((sprite) => {
+            sprite.y -= 1.5;
+            sprite.alpha -= 0.04;
+            let sign = sprite.scaleX < 0 ? -1 : 1;
+            if (Math.abs(sprite.scaleX) < 10.0) {
+                sprite.scaleX += sign * 0.05;
+                sprite.scaleY += 0.05;
+            }
+            if (sprite.alpha <= 0.05) {
+                sprite.destroy();
+                return false;
+            }
+            return true;
+        });
     }
 
     handleTouch(): void {
@@ -875,8 +893,9 @@ export class DetonatorGame extends Phaser.Scene {
 
     destroyPlayerSprite(pid: string): void {
         if (pid in this.playerSprites) {
-            this.playerSprites[pid].setActive(false).setVisible(false);
-            this.playerSprites[pid].destroy();
+            let sprite = this.playerSprites[pid];
+            sprite.stop();
+            this.dyingSprites.push(sprite);
             delete this.playerSprites[pid];
         }
     }
@@ -1415,7 +1434,33 @@ export class DetonatorGame extends Phaser.Scene {
             return true;
         });
 
+        this.updateLeaderboard(players);
         this.updateStatus();
+    }
+
+    updateLeaderboard(players: PlayerData[]): void {
+        const sorted = players
+            .filter((p) => p.active && p.name)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+
+        let html = "<div class='heading' style='color:#ffff00;text-align:center;font-size:16px;margin-bottom:4px;'>PLAYERS</div>";
+        html += "<table border='0' width='100%'>";
+        for (const p of sorted) {
+            const isMe = this.curPlayer && p.id === this.curPlayer.id;
+            const color = isMe ? "#5ee65c" : "#fff";
+            html += `<tr style='color:${color};'><td style='text-align:left;font-size:14px;padding:1px 4px;'>${this.escapeHtml(p.name)}</td>`;
+            html += `<td style='text-align:right;font-size:14px;padding:1px 4px;'>${p.score}</td></tr>`;
+        }
+        html += "</table>";
+
+        withElement("leaderboard", (elem) => {
+            elem.innerHTML = html;
+        });
+    }
+
+    private escapeHtml(text: string): string {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     clientSidePrediction(): void {
