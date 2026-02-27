@@ -14,10 +14,11 @@ on:
         description: "Cargo package name (e.g. game-server)"
         required: true
         type: string
-      env_content:
-        description: "Contents of the .env file (KEY=VALUE lines)"
-        required: true
+      env_vars:
+        description: "Non-secret env vars (KEY=VALUE lines)"
+        required: false
         type: string
+        default: ""
       service_name:
         description: "Systemd service name on the server"
         required: true
@@ -28,6 +29,8 @@ on:
       DEPLOY_HOST:
         required: true
       DEPLOY_USER:
+        required: true
+      SCORES_SECRET:
         required: true
 
 jobs:
@@ -48,7 +51,11 @@ jobs:
         run: cargo build --release -p ${{ inputs.cargo_package }}
 
       - name: Write env file
-        run: echo "${{ inputs.env_content }}" > env_file
+        run: |
+          cat <<'EOF' > env_file
+          ${{ inputs.env_vars }}
+          EOF
+          echo "SCORES_SECRET=${{ secrets.SCORES_SECRET }}" >> env_file
 
       - name: Set up SSH
         run: |

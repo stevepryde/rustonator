@@ -20,28 +20,28 @@ jobs:
     uses: ./.github/workflows/_deploy.yml
     with:
       cargo_package: game-server
-      env_content: |
+      env_vars: |
         SCORES_URL=${{ vars.SCORES_URL }}
-        SCORES_SECRET=${{ secrets.SCORES_SECRET }}
       service_name: game_server
     secrets:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      SCORES_SECRET: ${{ secrets.SCORES_SECRET }}
 
   scores-server:
     if: contains(fromJSON('["all", "servers", "scores-server"]'), inputs.target)
     uses: ./.github/workflows/_deploy.yml
     with:
       cargo_package: scores-server
-      env_content: |
-        SCORES_SECRET=${{ secrets.SCORES_SECRET }}
+      env_vars: |
         SCORES_FILE=/var/lib/scores_server/scores.json
       service_name: scores_server
     secrets:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      SCORES_SECRET: ${{ secrets.SCORES_SECRET }}
 
   client:
     if: contains(fromJSON('["all", "client"]'), inputs.target)
