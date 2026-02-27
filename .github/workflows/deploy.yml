@@ -19,9 +19,9 @@ jobs:
     if: contains(fromJSON('["all", "servers", "game-server"]'), inputs.target)
     uses: ./.github/workflows/_deploy.yml
     with:
-      cargo_package: game-server
+      cargo_package: game_server
       env_vars: |
-        SCORES_URL=${{ vars.SCORES_URL }}
+        SCORES_URL=http://127.0.0.1:9003
       service_name: game_server
     secrets:
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -33,7 +33,7 @@ jobs:
     if: contains(fromJSON('["all", "servers", "scores-server"]'), inputs.target)
     uses: ./.github/workflows/_deploy.yml
     with:
-      cargo_package: scores-server
+      cargo_package: scores_server
       env_vars: |
         SCORES_FILE=/var/lib/scores_server/scores.json
       service_name: scores_server

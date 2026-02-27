@@ -199,7 +199,7 @@ export interface ScoreBuckets {
   all_time: ScoreEntry[];
 }
 
-const SCORES_URL = "http://127.0.0.1:9003";
+const SCORES_URL = import.meta.env.VITE_SCORES_URL || "";
 
 export async function fetchScores(): Promise<ScoreBuckets | null> {
   try {

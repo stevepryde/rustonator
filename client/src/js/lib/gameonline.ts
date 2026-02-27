@@ -45,10 +45,11 @@ export class DetonatorGameOnline extends DetonatorGame {
       window.clearTimeout(this.waitTimer);
     }
 
-    // TODO: Set via .env?
-    this.serverAddress = "127.0.0.1:9002";
+    this.serverAddress = import.meta.env.VITE_GAME_SERVER || location.host;
+    this.serverSSL = import.meta.env.VITE_GAME_SERVER_SSL
+      ? !!import.meta.env.VITE_GAME_SERVER_SSL
+      : location.protocol === "https:";
     if (this.serverAddress) {
-      this.serverSSL = false;
       window.clearTimeout(this.waitTimer);
       this.stateMachine.setState(GameState.MainGame);
     }
@@ -63,10 +64,11 @@ export class DetonatorGameOnline extends DetonatorGame {
     super.create();
 
     // Init socket.
+    const wsPath = import.meta.env.VITE_GAME_SERVER ? "" : "/ws";
     if (this.serverSSL) {
-      this.socket = new WebSocket("wss://" + this.serverAddress, []);
+      this.socket = new WebSocket("wss://" + this.serverAddress + wsPath, []);
     } else {
-      this.socket = new WebSocket("ws://" + this.serverAddress, []);
+      this.socket = new WebSocket("ws://" + this.serverAddress + wsPath, []);
     }
 
     this.joined = false;
