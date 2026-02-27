@@ -4,12 +4,14 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
+    "jsx": "react-jsx",
     "strict": true,
     "noImplicitAny": true,
     "sourceMap": true,
     "outDir": "dist",
     "baseUrl": ".",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vite/client"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

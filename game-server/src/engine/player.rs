@@ -351,8 +351,7 @@ impl Player {
         &mut self,
         world: &mut World,
         delta_time: f64,
-    ) -> ZResult<bool>
-    {
+    ) -> ZResult<bool> {
         if !self.has_joined() {
             return self.handle_player_join(world).await;
         }
@@ -388,18 +387,25 @@ impl Player {
                 // No message waiting.
                 Ok(true)
             }
-            Ok(Some(PlayerMessage::JoinGame(name))) => {
-                info!("Player {:?} is joining with name '{}'", self.id(), name);
-                self.set_name(&sanitise_name(&name));
+            Ok(Some(PlayerMessage::JoinGame(join_data))) => {
+                info!(
+                    "Player {:?} is joining with name '{}' and character '{:?}'",
+                    self.id(),
+                    join_data.name,
+                    join_data.character
+                );
+                self.set_name(&sanitise_name(&join_data.name));
                 self.set_invincible();
                 let spawn_point = world.get_spawn_point();
                 self.set_position(PixelPositionF64::from_map_position(spawn_point, world));
 
                 let available_images = ["p1", "p2", "p3", "p4"];
-                self.image = (*available_images
-                    .choose(&mut rand::rng())
-                    .unwrap_or(&"p1"))
-                .to_string();
+                self.image = join_data
+                    .character
+                    .filter(|c| available_images.contains(&c.as_str()))
+                    .unwrap_or_else(|| {
+                        (*available_images.choose(&mut rand::rng()).unwrap_or(&"p1")).to_string()
+                    });
 
                 self.state = PlayerState::Active;
                 self.active = true;
@@ -572,8 +578,7 @@ impl Player {
         tmp_action: &mut Action,
         map_pos: MapPosition,
         world: &World,
-    )
-    {
+    ) {
         // Try X movement.
         if tmp_action.x() != 0 {
             let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
@@ -620,10 +625,6 @@ static SANITISE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[^\w\s,._:'!^*()=\-]+").unwrap());
 
 fn sanitise_name(name: &str) -> String {
-    let cleaned: String = SANITISE_RE
-        .replace_all(name, "")
-        .chars()
-        .take(30)
-        .collect();
+    let cleaned: String = SANITISE_RE.replace_all(name, "").chars().take(30).collect();
     cleaned.censor()
 }

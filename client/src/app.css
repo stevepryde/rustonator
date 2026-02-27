@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --color-retro-green: #5ee65c;
+  --color-retro-green-dark: #4bb849;
+  --color-retro-green-glow: #68ff66;
+  --color-retro-bg: #181818;
+  --color-retro-bg-light: #222222;
+  --color-retro-yellow: #ffff00;
+  --color-retro-error: #a00000;
+  --font-family-sans: "Raleway", sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-retro-bg-light);
+    overflow-x: hidden;
+    font-family: var(--font-family-sans);
+    font-size: 16px;
+  }
+
+  a:link,
+  a:active,
+  a:visited {
+    color: var(--color-retro-green);
+    text-decoration: none;
+    font-weight: bold;
+    text-shadow: 0px 0px 5px rgba(0, 0, 0, 1);
+  }
+
+  a:hover {
+    color: var(--color-retro-green-glow);
+    text-shadow: 0px 0px 5px rgba(0, 0, 0, 1);
+  }
+}
+
+@layer utilities {
+  .retro-dotpattern {
+    background: radial-gradient(black 15%, transparent 16%) 0 0,
+      radial-gradient(black 15%, transparent 16%) 8px 8px,
+      radial-gradient(rgba(255, 255, 255, 0.1) 15%, transparent 20%) 0 1px,
+      radial-gradient(rgba(255, 255, 255, 0.1) 15%, transparent 20%) 8px 9px;
+    background-color: var(--color-retro-bg);
+    background-size: 16px 16px;
+  }
+
+  .btn-solid {
+    padding: 10px;
+    box-sizing: border-box;
+    font-size: large;
+    font-weight: bold;
+    color: black;
+    text-align: center;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 1);
+    background: var(--color-retro-green);
+    border: 0;
+    border-bottom: 2px solid #2f742e;
+    cursor: pointer;
+    box-shadow: inset 0 -2px #28be68;
+    border-radius: 5px;
+  }
+
+  .btn-solid:active,
+  .btn-solid:hover {
+    background: var(--color-retro-green);
+    outline: none;
+    box-shadow: none;
+  }
+
+  .btn-glow {
+    background-color: black;
+    border: 2px solid var(--color-retro-green-dark);
+    color: white;
+    padding: 5px 20px;
+    text-align: center;
+    display: inline-block;
+    font-size: 14px;
+    margin: 4px 2px;
+    transition-duration: 0.4s;
+    cursor: pointer;
+    border-radius: 5px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 1);
+  }
+
+  .btn-glow:hover {
+    background-color: var(--color-retro-green-dark);
+    color: white;
+  }
+
+  .green-border-box {
+    margin: auto;
+    padding: 10px 20px;
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid var(--color-retro-green-dark);
+    border-radius: 5px;
+    color: white;
+    z-index: 10;
+  }
+}

@@ -1,22 +1,5 @@
-import { DetonatorGame, targetFPS, DeadData, PowerupData } from "./game";
-import { GameState } from "./game";
-import { WebUIManager, setElementDisplay } from "./web";
-import { StateMachine } from "./statemachine";
-import { PlayerData } from "./common/player";
-import { ExplosionData } from "./common/explosion";
-import { BombData } from "./common/bomb";
-import { WorldData, ChunkData } from "./common/world";
-import { MobData } from "./common/mob";
-
-interface ServerData {
-  ip: string;
-  ssl?: boolean;
-}
-
-interface SocketData {
-  code: string;
-  data: any;
-}
+import { DetonatorGame, targetFPS } from "./game";
+import { gameBridge } from "../../bridge/GameBridge";
 
 export class DetonatorGameOnline extends DetonatorGame {
   waitTimer: number = -1;
@@ -25,19 +8,13 @@ export class DetonatorGameOnline extends DetonatorGame {
   serverSSL: boolean = false;
   joined: boolean = false;
 
-  constructor(uiManager: WebUIManager, playerName: string, stateMachine: StateMachine) {
-    super(uiManager, playerName, stateMachine);
+  constructor(playerName: string, character: string, parentContainer: HTMLDivElement) {
+    super(playerName, character, parentContainer);
 
-    uiManager.showLoadingScreen("Connecting to server...");
+    gameBridge.emit("loadingMessage", { message: "Connecting to server..." });
+    gameBridge.emit("screenChange", { screen: "loading" });
 
-    this.stateMachine.addTransition(GameState.InitGame, GameState.FindServer, () => {
-      this.requestServer();
-    });
-    this.stateMachine.addTransition(GameState.FindServer, GameState.MainGame, () => {
-      this.startGame();
-    });
-
-    this.stateMachine.setState(GameState.FindServer);
+    this.requestServer();
   }
 
   requestServer(): void {
@@ -51,16 +28,11 @@ export class DetonatorGameOnline extends DetonatorGame {
       : location.protocol === "https:";
     if (this.serverAddress) {
       window.clearTimeout(this.waitTimer);
-      this.stateMachine.setState(GameState.MainGame);
+      this.startGame();
     }
   }
 
   create() {
-    if (this.sys.game.device.os.desktop) {
-      setElementDisplay({
-        leaderboard: "block"
-      });
-    }
     super.create();
 
     // Init socket.
@@ -74,12 +46,19 @@ export class DetonatorGameOnline extends DetonatorGame {
     this.joined = false;
     this.setupSocket(this.socket);
     this.sendPing();
-
   }
 
   setupSocket(socket: WebSocket): void {
-    socket.onopen = (event) => {
-      let msg = JSON.stringify({"data": {"code": "JOINGAME", "data": this.playerName}});
+    socket.onopen = () => {
+      let msg = JSON.stringify({
+        "data": {
+          "code": "JOINGAME",
+          "data": {
+            "name": this.playerName,
+            "character": this.character
+          }
+        }
+      });
       if (this.socket) {
         this.socket.send(msg);
       }
@@ -111,15 +90,8 @@ export class DetonatorGameOnline extends DetonatorGame {
         break;
       }
       case "FRAMEDATA": {
-        // Player is received separately, but just stick them in with players.
         data.players.push(data.player);
         this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
-
-        // DEBUG: simulate lag.
-        // setTimeout(() => {
-        //   this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
-        // }, 200);
-
         break;
       }
       case "DEAD": {
@@ -139,7 +111,6 @@ export class DetonatorGameOnline extends DetonatorGame {
       this.pingSent = false;
     }
   }
-
 
   sendPing(): void {
     if (!this.pingSent && this.socket && this.socket.readyState === 1) {
@@ -164,7 +135,6 @@ export class DetonatorGameOnline extends DetonatorGame {
   update(time: number, delta: number) {
     // Ping every 2 seconds.
     if (this.lagCounter++ > targetFPS * 2) {
-
       this.lagCounter = 0;
       if (!this.pingSent) {
         this.sendPing();

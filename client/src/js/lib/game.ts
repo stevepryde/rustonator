@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { IMG_PREFIX, setElementDisplay, WebUIManager, withElement } from "./web";
+import { gameBridge } from "../../bridge/GameBridge";
 import { Player, PlayerData } from "./common/player";
 import { Action, ActionData } from "./common/action";
 import { ChunkData, World, WorldData } from "./common/world";
@@ -7,9 +7,10 @@ import { ObjectPool } from "./objectpool";
 import { Mob, MobData } from "./common/mob";
 import { BombData } from "./common/bomb";
 import { ExplosionData } from "./common/explosion";
-import { StateMachine } from "./statemachine";
 import { EffectType } from "./common/effect";
 import { PlayerFlags } from "./common/playerflags";
+
+export const IMG_PREFIX = "/assets/";
 
 export const targetFPS = 30;
 
@@ -76,12 +77,11 @@ const DEPTH = {
 };
 
 export class DetonatorGame extends Phaser.Scene {
-    uiManager!: WebUIManager;
-    stateMachine!: StateMachine;
     playerName!: string;
-    gameState: GameState = GameState.Menu;
+    character!: string;
     phaserGame: Phaser.Game | null = null;
     canvasInfo!: CanvasInfo;
+    parentContainer: HTMLDivElement | null = null;
 
     socket: WebSocket | null = null;
 
@@ -144,8 +144,6 @@ export class DetonatorGame extends Phaser.Scene {
     flickerCount = 0;
 
     touchEnabled: boolean = false;
-    playerStatsDisplayed: boolean = false;
-    iconDisplayed: boolean = false;
     leaderboardNames: Phaser.GameObjects.Text[] = [];
     leaderboardScores: Phaser.GameObjects.Text[] = [];
     leaderboardShade: Phaser.GameObjects.Image | null = null;
@@ -153,12 +151,12 @@ export class DetonatorGame extends Phaser.Scene {
     scoreShade: Phaser.GameObjects.Image | null = null;
     scoreText: Phaser.GameObjects.Text | null = null;
 
-    constructor(uiManager: WebUIManager, playerName: string, stateMachine: StateMachine) {
+    constructor(playerName: string, character: string, parentContainer: HTMLDivElement) {
         super({ key: "DetonatorGame" });
 
-        this.uiManager = uiManager;
-        this.stateMachine = stateMachine;
         this.playerName = playerName;
+        this.character = character;
+        this.parentContainer = parentContainer;
         this.canvasInfo = this.getCanvasInfo();
 
         this.world = new World();
@@ -172,30 +170,29 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     quitGame(): void {
-        this.stateMachine.setState(GameState.RespawnMenu, {
-            message: this.deadReason,
-            player: this.curPlayer
+        gameBridge.emit("playerDied", {
+            reason: this.deadReason,
+            finalScore: this.curPlayer?.score ?? 0,
         });
+        gameBridge.emit("screenChange", { screen: "postGame" });
     }
 
     startGame() {
-        this.uiManager.hideExitPopup();
-
-        // Remove all child elements of gameCanvas - phaser bug!
-        withElement("gameCanvas", (canvas) => {
-            while (canvas.hasChildNodes()) {
-                let lastChild = canvas.lastChild;
+        // Remove all child elements of canvas container - phaser bug!
+        if (this.parentContainer) {
+            while (this.parentContainer.hasChildNodes()) {
+                let lastChild = this.parentContainer.lastChild;
                 if (lastChild) {
-                    canvas.removeChild(lastChild);
+                    this.parentContainer.removeChild(lastChild);
                 }
             }
-        });
+        }
 
         const config: Phaser.Types.Core.GameConfig = {
             type: this.canvasInfo.canvasType,
             width: this.canvasInfo.width,
             height: this.canvasInfo.height,
-            parent: "gameCanvas",
+            parent: this.parentContainer ?? undefined,
             pixelArt: false,
             backgroundColor: "#000000",
             scene: this,
@@ -221,7 +218,6 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     cleanup(): void {
-        // TODO: This should be unnecessary. Just destroy and recreate this game object.
         this.cameraset = false;
         this.mykeys = null;
         this.altkeys = null;
@@ -319,6 +315,20 @@ export class DetonatorGame extends Phaser.Scene {
         );
     }
 
+    isMobile(): boolean {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|BB|PlayBook|IEMobile|Windows Phone|Kindle|Silk|Opera Mini/i.test(
+            navigator.userAgent
+        );
+    }
+
+    isAndroid(): boolean {
+        return /Android/i.test(navigator.userAgent);
+    }
+
+    isApple(): boolean {
+        return /(iPhone|iPad)/i.test(navigator.userAgent);
+    }
+
     create(): void {
         // Create shared animations for player spritesheets.
         const playerKeys = ["p1", "p2", "p3", "p4"];
@@ -411,50 +421,14 @@ export class DetonatorGame extends Phaser.Scene {
 
         if (this.sys.game.device.os.desktop) {
             this.touchEnabled = false;
-            this.iconDisplayed = true;
-
-            setElementDisplay({
-                iconarea: "block",
-                player: "block"
-            });
-
-            this.playerStatsDisplayed = true;
         } else {
             this.touchEnabled = true;
-
-            // Handle orientation changes via resize event.
-            this.scale.on("resize", () => {
-                this.handleOrientationChange();
-            });
-
-            this.iconDisplayed = false;
-            setElementDisplay({
-                iconarea: "none",
-                player: "none",
-                leaderboard: "none"
-            });
-
-            this.playerStatsDisplayed = false;
-
             this.addTouchControls();
             this.leaderboardShade = null;
             this.scoreShade = null;
         }
 
-        this.uiManager.showGame();
-    }
-
-    handleOrientationChange(): void {
-        if (this.sys.game.device.os.desktop) {
-            return;
-        }
-
-        if (window.innerWidth < window.innerHeight) {
-            // Portrait mode - incorrect orientation.
-            setElementDisplay({ orientwarning: "block" });
-        } else {
-            setElementDisplay({ orientwarning: "none" });
-        }
+        gameBridge.emit("screenChange", { screen: "game" });
     }
 
     update(time: number, delta: number): void {
@@ -727,7 +701,7 @@ export class DetonatorGame extends Phaser.Scene {
 
         // Don't show fullscreen button on Android - point users to app instead.
         // Don't show the fullscreen button on iPhone/iPad either - it doesn't work.
-        if (!this.uiManager.isAndroid() && !this.uiManager.isApple()) {
+        if (!this.isAndroid() && !this.isApple()) {
             // FULLSCREEN TOGGLE
             sprite = this.add.sprite(10, 10, "controls", 5);
             sprite.setOrigin(0, 0);
@@ -735,18 +709,6 @@ export class DetonatorGame extends Phaser.Scene {
             this.controlSprites["fs"] = sprite;
             sprite.setInteractive();
             sprite.on("pointerdown", () => { this.goFull(); });
-            sprite.setScale(2);
-            sprite.alpha = 0.8;
-            sprite.setDepth(DEPTH.CONTROLS);
-            this.controlsGroup.add(sprite);
-        } else if (this.uiManager.isApple()) {
-            // EXIT BUTTON
-            sprite = this.add.sprite(10, 10, "controls", 6);
-            sprite.setOrigin(0, 0);
-            sprite.setScrollFactor(0);
-            this.controlSprites["exit"] = sprite;
-            sprite.setInteractive();
-            sprite.on("pointerdown", () => { this.uiManager.showExitPopup(); });
             sprite.setScale(2);
             sprite.alpha = 0.8;
             sprite.setDepth(DEPTH.CONTROLS);
@@ -772,14 +734,13 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     updateStatus(): void {
-        let status: string;
-
         if (!this.curPlayer) {
             return;
         }
 
+        // Mobile: show score in Phaser text overlay
         if (this.touchEnabled) {
-            status = "SCORE: " + this.curPlayer.score;
+            let status = "SCORE: " + this.curPlayer.score;
             status += "   BOMBS: " + this.curPlayer.maxBombs;
             status += "   RANGE: " + this.curPlayer.range;
             if (this.curPlayer.rank && this.totalPlayers) {
@@ -823,72 +784,11 @@ export class DetonatorGame extends Phaser.Scene {
             return;
         }
 
-        // Only display if the window is big enough.
-        let h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
-
-        let threshold = 850;
-        if (h < threshold && this.playerStatsDisplayed) {
-            setElementDisplay({ player: "none" });
-            this.playerStatsDisplayed = false;
-        } else if (h > threshold && !this.playerStatsDisplayed) {
-            setElementDisplay({ player: "block" });
-            this.playerStatsDisplayed = true;
-        }
-
-        if (this.playerStatsDisplayed) {
-            status = "<div class='heading'>" + this.curPlayer.name + "</div><hr />";
-            status += "<table border='0' width='100%'><tr>";
-            status += "<td width='50%'><b>SCORE:</b> " + this.curPlayer.score + "</td>";
-            status += "<td><b>LOCATION:</b> ";
-            status += this.world.toMapX(this.curPlayer.x) + " , " + this.world.toMapY(this.curPlayer.y);
-            status += "</td></tr><tr>";
-            status += "<td><b>BOMBS:</b> " + this.curPlayer.maxBombs + "</td>";
-            status += "<td>";
-            if (this.curPlayer.rank && this.totalPlayers) {
-                status += "<b>RANK:</b> " + this.curPlayer.rank + " of " + this.totalPlayers;
-            } else {
-                status += "&nbsp;";
-            }
-            status += "</td></tr><tr>";
-            status += "<td colspan='2'><b>RANGE:</b> " + this.curPlayer.range;
-            status += "</td></tr>";
-            status += "</table>";
-
-            withElement("player", (elem) => {
-                elem.innerHTML = status;
-            });
-        }
-    }
-
-    updateIcon(): void {
-        let w = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
-        let h = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
-        let aspect = w / h;
-        let minAspect = (this.canvasInfo.width + 320) / this.canvasInfo.height; // allow 250 pixels for the icon.
-
-        let threshold = 650;
-        if ((h < threshold || aspect < minAspect) && this.iconDisplayed) {
-            setElementDisplay({ iconarea: "none", player: "none" });
-            withElement("leaderboard", (elem) => {
-                elem.style.top = "30px";
-                // shrink font size.
-                elem.style.fontSize = "8px";
-                elem.style.width = "200px";
-            });
-
-            this.iconDisplayed = false;
-        } else if (h > threshold && aspect >= minAspect && !this.iconDisplayed) {
-            setElementDisplay({ iconarea: "block" });
-            withElement("leaderboard", (elem) => {
-                elem.style.top = "300px";
-                elem.style.width = "400px";
-            });
-            withElement("player", (elem) => {
-                elem.style.display = "block";
-                elem.style.top = "600px";
-            });
-            this.iconDisplayed = true;
-        }
+        // Desktop: emit stats to React
+        gameBridge.emit("playerStatsUpdate", {
+            player: this.curPlayer.toJSON(),
+            totalPlayers: this.totalPlayers,
+        });
     }
 
     destroyPlayerSprite(pid: string): void {
@@ -935,11 +835,6 @@ export class DetonatorGame extends Phaser.Scene {
     createWorld(data: WorldData): void {
         this.world.fromJSON(data);
 
-        // Custom world using sprites.
-        // NOTE: I tried using tilemap and it was horribly slow.
-        //       Also there was no easy way to update a chunk of the map without
-        //       reloading the whole thing, or using putTile() which crashed
-        //       the browser tab because it was so slow!
         this.worldSprites = [];
         for (let i = 0; i < this.world.width * this.world.height; i++) {
             this.worldSprites.push(null);
@@ -984,9 +879,6 @@ export class DetonatorGame extends Phaser.Scene {
                     let sprite = this.worldSprites[realIndex];
                     if (sprite != null) {
                         sprite.setActive(false).setVisible(false);
-
-                        // Now make it null. The group will keep track of the
-                        // original object.
                         this.worldSprites[realIndex] = null;
                     }
                 }
@@ -1011,9 +903,6 @@ export class DetonatorGame extends Phaser.Scene {
                     let sprite = this.worldSprites[realIndex];
                     if (sprite != null) {
                         sprite.setActive(false).setVisible(false);
-
-                        // Now make it null. The group will keep track of the
-                        // original object.
                         this.worldSprites[realIndex] = null;
                     }
 
@@ -1027,7 +916,6 @@ export class DetonatorGame extends Phaser.Scene {
 
         index = 0;
         for (my = ty; my < ty + chunkheight; my++) {
-            // Find the corresponding 'real' map index.
             realIndex = my * this.world.width + tx;
 
             for (mx = tx; mx < tx + chunkwidth; mx++) {
@@ -1040,7 +928,6 @@ export class DetonatorGame extends Phaser.Scene {
                 tile = this.worldSprites[realIndex];
 
                 if (tile == null) {
-                    // Try to find an inactive sprite in the world group to reuse.
                     let reused = false;
                     if (this.worldGroup) {
                         const children = this.worldGroup.getChildren() as Phaser.GameObjects.Image[];
@@ -1311,15 +1198,12 @@ export class DetonatorGame extends Phaser.Scene {
                 this.bombSprites[bid].x = bx;
                 this.bombSprites[bid].y = by;
             } else {
-                // spawn new sprite for this bomb.
-                // Use Sprite instead of Image so we can animate.
                 let bomb = this.add.sprite(bx, by, "bombs");
                 bomb.setDepth(DEPTH.BOMB);
                 if (this.bombGroup) {
                     this.bombGroup.add(bomb);
                 }
 
-                // Show less frames if bomb will explode quicker.
                 let frames: number[] = [];
                 let secsRemaining = Math.floor(bombs[i].remaining);
                 if (secsRemaining > 4) {
@@ -1330,7 +1214,6 @@ export class DetonatorGame extends Phaser.Scene {
                     frames.push(n);
                 }
 
-                // Create a unique animation key for this bomb's countdown.
                 let animKey = "bomb_blow_" + bid;
                 if (!this.anims.exists(animKey)) {
                     this.anims.create({
@@ -1363,10 +1246,8 @@ export class DetonatorGame extends Phaser.Scene {
             let ey = explosions[i].y * this.world.tileheight + halftileheight;
 
             if (eid in this.explosionEmitters) {
-                // Emitter already exists; update its position.
                 this.explosionEmitters[eid].setPosition(ex, ey);
             } else {
-                // Spawn new particle emitter for explosion.
                 let ms = Math.floor(explosions[i].remaining * 1200);
 
                 let emitter = this.add.particles(ex, ey, "explode", {
@@ -1385,7 +1266,6 @@ export class DetonatorGame extends Phaser.Scene {
                     this.explosionGroup.add(emitter);
                 }
 
-                // Emit a burst of particles.
                 emitter.explode(3);
 
                 this.explosionEmitters[eid] = emitter;
@@ -1395,7 +1275,6 @@ export class DetonatorGame extends Phaser.Scene {
         // Clean up.
         this.knownPlayers.cleanUp((pid) => {
             if (!this.curPlayer || pid !== this.curPlayer.id) {
-                // Also delete the sprite if one exists.
                 this.destroyPlayerSprite(pid);
                 this.destroyPlayerName(pid);
             }
@@ -1407,7 +1286,6 @@ export class DetonatorGame extends Phaser.Scene {
 
         this.knownBombs.cleanUp((bid) => {
             this.destroyBombSprite(bid);
-            // Also clean up the bomb-specific animation.
             let animKey = "bomb_blow_" + bid;
             if (this.anims.exists(animKey)) {
                 this.anims.remove(animKey);
@@ -1439,23 +1317,10 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     updateLeaderboard(players: PlayerData[]): void {
-        const sorted = players
-            .filter((p) => p.active && p.name)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 10);
-
-        let html = "<div class='heading' style='color:#ffff00;text-align:center;font-size:16px;margin-bottom:4px;'>PLAYERS</div>";
-        html += "<table border='0' width='100%'>";
-        for (const p of sorted) {
-            const isMe = this.curPlayer && p.id === this.curPlayer.id;
-            const color = isMe ? "#5ee65c" : "#fff";
-            html += `<tr style='color:${color};'><td style='text-align:left;font-size:14px;padding:1px 4px;'>${this.escapeHtml(p.name)}</td>`;
-            html += `<td style='text-align:right;font-size:14px;padding:1px 4px;'>${p.score}</td></tr>`;
-        }
-        html += "</table>";
-
-        withElement("leaderboard", (elem) => {
-            elem.innerHTML = html;
+        // Emit to React for rendering
+        gameBridge.emit("leaderboardUpdate", {
+            players,
+            currentPlayerId: this.curPlayer?.id ?? null,
         });
     }
 
@@ -1467,17 +1332,6 @@ export class DetonatorGame extends Phaser.Scene {
         if (!this.curPlayer || !this.tmpPlayer) {
             return;
         }
-
-        /*
-
-        Client-side prediction.
-
-        curPlayer represents the Player object last received from the server.
-        playerSprites[pid] is the current and up-to-date sprite object.
-
-        Use interpolation from curPlayer coords to current frame by processing
-        all actionList inputs.
-        */
 
         let pid = this.curPlayer.id;
 
@@ -1527,8 +1381,6 @@ export class DetonatorGame extends Phaser.Scene {
         let targetX = this.world.toScreenX(mx);
         let targetY = this.world.toScreenY(my);
         if (this.world.getcell(mx, my) === 1) {
-            // ERROR: we're inside a wall - give up and wait for the server to
-            // reposition us.
             return;
         }
 

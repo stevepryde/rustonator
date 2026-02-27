@@ -36,9 +36,16 @@ impl MessageId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JoinGameData {
+    pub name: String,
+    #[serde(default)]
+    pub character: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE", tag = "code", content = "data")]
 pub enum PlayerMessage {
-    JoinGame(String),
+    JoinGame(JoinGameData),
     Action(Action),
     SpawnPlayer(SerPlayer, SerWorldData),
     PowerUp(String),
