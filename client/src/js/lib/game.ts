@@ -218,6 +218,13 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     cleanup(): void {
+        if (this.socket) {
+            this.socket.onclose = null;
+            this.socket.onmessage = null;
+            this.socket.close();
+            this.socket = null;
+        }
+
         this.cameraset = false;
         this.mykeys = null;
         this.altkeys = null;

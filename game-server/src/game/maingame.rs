@@ -324,22 +324,26 @@ impl RustonatorGame {
                 }
             };
 
-            if player.is_active() && player.action().fire() {
-                self.create_bomb_for_player(&mut player);
+            if player.is_active() {
+                if player.action().fire() {
+                    self.create_bomb_for_player(&mut player);
 
-                // Prevent more bombs until the player releases fire.
-                player.action_mut().cease_fire();
-            }
+                    // Prevent more bombs until the player releases fire.
+                    player.action_mut().cease_fire();
+                }
 
-            player.update(&self.world, delta_time);
-            if let Err(e) = self.process_player_move(&mut player).await {
-                error!(
-                    "Error processing move for player: {:?} ({}): {:?}",
-                    player.id(),
-                    player.name(),
-                    e
-                );
-                player.terminate();
+                player.update(&self.world, delta_time);
+                if let Err(e) = self.process_player_move(&mut player).await {
+                    error!(
+                        "Error processing move for player: {:?} ({}): {:?}",
+                        player.id(),
+                        player.name(),
+                        e
+                    );
+                    player.terminate();
+                }
+            } else {
+                player.update(&self.world, delta_time);
             }
 
             // Reinsert player.
@@ -400,6 +404,7 @@ impl RustonatorGame {
                         // Create explosion but don't add it to the world. It is for display only.
                         let explosion = Explosion::new(None, map_pos);
                         self.explosions.add(explosion);
+                        break;
                     }
                 }
 
