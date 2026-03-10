@@ -1,3 +1,5 @@
+import { uiAssets } from "../assets/uiAssets";
+
 interface PostGameModalProps {
   reason: string;
   score: number;
@@ -15,7 +17,7 @@ export default function PostGameModal({ reason, score, onRespawn }: PostGameModa
             <tr>
               <td>
                 <img
-                  src="/assets/dsicon200.png"
+                  src={uiAssets.dsicon200}
                   alt="game icon"
                   className="w-[100px] h-[100px]"
                 />

@@ -2,6 +2,7 @@ import type { PlayerData } from "../js/lib/common/player";
 import Leaderboard from "./Leaderboard";
 import PlayerStats from "./PlayerStats";
 import OrientationWarning from "./OrientationWarning";
+import { uiAssets } from "../assets/uiAssets";
 
 interface GameAreaProps {
   leaderboardPlayers: PlayerData[];
@@ -20,7 +21,7 @@ export default function GameArea({
     <>
       {/* Icon area - desktop only */}
       <div className="absolute right-[130px] top-[30px] p-2.5 hidden md:block">
-        <img src="/assets/dsicon200.png" alt="game icon" />
+        <img src={uiAssets.dsicon200} alt="game icon" />
       </div>
 
       <Leaderboard players={leaderboardPlayers} currentPlayerId={currentPlayerId} />

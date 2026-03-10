@@ -1,3 +1,5 @@
+import { uiAssets } from "../assets/uiAssets";
+
 const CHARACTERS = ["p1", "p2", "p3", "p4"] as const;
 
 interface CharacterSelectProps {
@@ -22,7 +24,7 @@ export default function CharacterSelect({ selected, onSelect }: CharacterSelectP
           <div
             className="w-8 h-8 image-rendering-pixelated"
             style={{
-              backgroundImage: `url(/assets/${char}icon.png)`,
+              backgroundImage: `url(${uiAssets.characterIcons[char]})`,
               backgroundSize: "contain",
               backgroundRepeat: "no-repeat",
               backgroundPosition: "center",

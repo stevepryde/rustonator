@@ -1,6 +1,6 @@
 import { Action, ActionData } from "./action";
 import { PlayerFlags } from "./playerflags";
-import { Effect, EffectData, EffectTarget } from "./effect";
+import { Effect, EffectData, EffectTarget, EffectType } from "./effect";
 import CellType from "./celltypes";
 import { IAgent } from "./agent";
 
@@ -16,8 +16,11 @@ export interface PlayerData {
     bombTime: number;
     maxBombs: number;
     curBombs: number;
+    remoteBombCharges: number;
     flags: string[];
     score: number;
+    scoreMultiplier: number;
+    scoreMultiplierRemaining: number;
     name: string;
     rank: number;
     effects: EffectData[];
@@ -35,8 +38,11 @@ export class Player implements EffectTarget, IAgent {
     bombTime: number;
     maxBombs: number;
     curBombs: number;
+    remoteBombCharges: number;
     flags: string[];
     score: number;
+    scoreMultiplier: number;
+    scoreMultiplierRemaining: number;
     name: string;
     rank: number;
     effects: Effect[];
@@ -53,8 +59,11 @@ export class Player implements EffectTarget, IAgent {
         this.bombTime = 3; // Seconds until bomb explodes. Max: 4, Min: 1.
         this.maxBombs = 1; // Bomb limit.
         this.curBombs = 0; // Number of bombs currently deployed.
+        this.remoteBombCharges = 0;
         this.flags = []; // Player flags.
         this.score = 0;
+        this.scoreMultiplier = 1;
+        this.scoreMultiplierRemaining = 0;
         this.name = "";
         this.rank = 0;
         this.effects = [];
@@ -73,8 +82,11 @@ export class Player implements EffectTarget, IAgent {
             bombTime: this.bombTime,
             maxBombs: this.maxBombs,
             curBombs: this.curBombs,
+            remoteBombCharges: this.remoteBombCharges,
             flags: this.flags,
             score: this.score,
+            scoreMultiplier: this.scoreMultiplier,
+            scoreMultiplierRemaining: this.scoreMultiplierRemaining,
             name: this.name,
             rank: this.rank,
             effects: this.effects.map((e: Effect) => {
@@ -108,8 +120,11 @@ export class Player implements EffectTarget, IAgent {
         this.bombTime = data.bombTime;
         this.maxBombs = data.maxBombs;
         this.curBombs = data.curBombs;
+        this.remoteBombCharges = data.remoteBombCharges ?? 0;
         this.flags = data.flags;
         this.score = data.score;
+        this.scoreMultiplier = data.scoreMultiplier ?? 1;
+        this.scoreMultiplierRemaining = data.scoreMultiplierRemaining ?? 0;
         this.name = data.name;
         this.rank = data.rank;
         this.effects = data.effects.map((e: EffectData) => {
@@ -176,5 +191,9 @@ export class Player implements EffectTarget, IAgent {
 
     hasFlag(flag: PlayerFlags): boolean {
         return this.flags.includes(flag);
+    }
+
+    hasEffect(effectType: EffectType): boolean {
+        return this.effects.some((effect) => effect.effectType === effectType && effect.remaining > 0);
     }
 }

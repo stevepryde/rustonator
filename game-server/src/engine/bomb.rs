@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct BombId(u64);
 
@@ -138,6 +138,7 @@ pub struct Bomb {
     pid: PlayerId,
     pname: String,
     active: bool,
+    remote: bool,
     #[serde(flatten)]
     position: MapPosition,
     remaining: BombTime,
@@ -146,12 +147,13 @@ pub struct Bomb {
 }
 
 impl Bomb {
-    pub fn new(player: &Player, position: MapPosition) -> Self {
+    pub fn new(player: &Player, position: MapPosition, remote: bool) -> Self {
         Bomb {
             id: BombId::from(0),
             pid: player.id(),
             pname: player.name().to_owned(),
             active: true,
+            remote,
             position,
             remaining: player.bomb_time(),
             range: player.range(),
@@ -170,6 +172,10 @@ impl Bomb {
 
     pub fn pid(&self) -> PlayerId {
         self.pid
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote
     }
 
     pub fn pname(&self) -> &str {

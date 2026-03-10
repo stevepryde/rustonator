@@ -9,8 +9,8 @@ import { BombData } from "./common/bomb";
 import { ExplosionData } from "./common/explosion";
 import { EffectType } from "./common/effect";
 import { PlayerFlags } from "./common/playerflags";
-
-export const IMG_PREFIX = "/assets/";
+import { formatTimedStatusSummary } from "../../lib/playerStatus";
+import { phaserAssets } from "../../assets/gameAssets";
 
 export const targetFPS = 30;
 
@@ -359,18 +359,16 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     preload(): void {
-        let prefix = IMG_PREFIX;
-
-        this.load.spritesheet("p1", prefix + "p1.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("p2", prefix + "p2.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("p3", prefix + "p3.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("p4", prefix + "p4.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("mob1", prefix + "mob1.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("tiles", prefix + "tileset1.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("explode", prefix + "explode.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("bombs", prefix + "bombtiles.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.spritesheet("controls", prefix + "controls.png", { frameWidth: 32, frameHeight: 32 });
-        this.load.image("shade", prefix + "shade.png");
+        this.load.spritesheet("p1", phaserAssets.p1, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p2", phaserAssets.p2, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p3", phaserAssets.p3, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("p4", phaserAssets.p4, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("mob1", phaserAssets.mob1, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("tiles", phaserAssets.tiles, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("explode", phaserAssets.explode, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("bombs", phaserAssets.bombs, { frameWidth: 32, frameHeight: 32 });
+        this.load.spritesheet("controls", phaserAssets.controls, { frameWidth: 32, frameHeight: 32 });
+        this.load.image("shade", phaserAssets.shade);
 
         this.load.script(
             "webfont",
@@ -519,6 +517,7 @@ export class DetonatorGame extends Phaser.Scene {
         this.handleTouch();
         this.updateInterpolatedObjects(delta / 1000);
         this.syncPlayerNames();
+        this.updateBombVisuals(time);
 
         if (this.clientElapsedMS >= this.minMS) {
 
@@ -533,9 +532,9 @@ export class DetonatorGame extends Phaser.Scene {
             this.curAction.fire = false;
             this.curAction.deltaTime = 1.0 / targetFPS;
             if (this.mykeys && this.altkeys) {
-                const directionState = this.getDirectionalState();
-                this.updateDirectionPriority(directionState);
-                const resolvedDirection = this.resolveDirectionState(directionState);
+                const rawDirectionState = this.getRawDirectionalState();
+                this.updateDirectionPriority(rawDirectionState);
+                const resolvedDirection = this.resolveDirectionState(this.getDirectionalState());
                 this.curAction.x = resolvedDirection.x;
                 this.curAction.y = resolvedDirection.y;
                 this.curAction.preferY = resolvedDirection.preferY;
@@ -658,6 +657,20 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     getDirectionalState(): DirectionState {
+        const rawState = this.getRawDirectionalState();
+        if (this.curPlayer?.hasEffect(EffectType.InputInversion)) {
+            return {
+                up: rawState.down,
+                down: rawState.up,
+                left: rawState.right,
+                right: rawState.left
+            };
+        }
+
+        return rawState;
+    }
+
+    getRawDirectionalState(): DirectionState {
         return {
             up: !!(this.mykeys?.up.isDown || this.altkeys?.up.isDown || this.touchActions.up),
             down: !!(this.mykeys?.down.isDown || this.altkeys?.down.isDown || this.touchActions.down),
@@ -680,14 +693,15 @@ export class DetonatorGame extends Phaser.Scene {
     resolveAxisDirection(
         negative: DirectionKey,
         positive: DirectionKey,
-        directionState: DirectionState
+        directionState: DirectionState,
+        inverted: boolean
     ): number {
         if (directionState[negative] === directionState[positive]) {
             if (!directionState[negative]) {
                 return 0;
             }
 
-            return this.directionPressOrder[negative] > this.directionPressOrder[positive]
+            return this.getDirectionOrder(negative, inverted) > this.getDirectionOrder(positive, inverted)
                 ? -1
                 : 1;
         }
@@ -696,16 +710,34 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     resolveDirectionState(directionState: DirectionState): { x: number; y: number; preferY: boolean } {
-        const x = this.resolveAxisDirection("left", "right", directionState);
-        const y = this.resolveAxisDirection("up", "down", directionState);
+        const inverted = !!this.curPlayer?.hasEffect(EffectType.InputInversion);
+        const x = this.resolveAxisDirection("left", "right", directionState, inverted);
+        const y = this.resolveAxisDirection("up", "down", directionState, inverted);
 
         if (x !== 0 && y !== 0) {
-            const xOrder = x < 0 ? this.directionPressOrder.left : this.directionPressOrder.right;
-            const yOrder = y < 0 ? this.directionPressOrder.up : this.directionPressOrder.down;
+            const xOrder = this.getDirectionOrder(x < 0 ? "left" : "right", inverted);
+            const yOrder = this.getDirectionOrder(y < 0 ? "up" : "down", inverted);
             return { x, y, preferY: yOrder > xOrder };
         }
 
         return { x, y, preferY: y !== 0 };
+    }
+
+    getDirectionOrder(direction: DirectionKey, inverted: boolean): number {
+        if (!inverted) {
+            return this.directionPressOrder[direction];
+        }
+
+        switch (direction) {
+            case "up":
+                return this.directionPressOrder.down;
+            case "down":
+                return this.directionPressOrder.up;
+            case "left":
+                return this.directionPressOrder.right;
+            case "right":
+                return this.directionPressOrder.left;
+        }
     }
 
     spriteContains(sprite: Phaser.GameObjects.Sprite, x: number, y: number): boolean {
@@ -857,6 +889,10 @@ export class DetonatorGame extends Phaser.Scene {
             if (this.curPlayer.rank && this.totalPlayers) {
                 status += "   RANK: " + this.curPlayer.rank + " of " + this.totalPlayers;
             }
+            const timedStatuses = formatTimedStatusSummary(this.curPlayer);
+            if (timedStatuses) {
+                status += "\n" + timedStatuses;
+            }
 
             if (!this.scoreText) {
                 let text = this.add.text(310, this.canvasInfo.height - 20, status, {
@@ -890,7 +926,7 @@ export class DetonatorGame extends Phaser.Scene {
             }
 
             this.scoreShade.displayWidth = this.scoreText.width + 20;
-            this.scoreShade.displayHeight = 20;
+            this.scoreShade.displayHeight = this.scoreText.height + 8;
 
             return;
         }
@@ -1325,26 +1361,30 @@ export class DetonatorGame extends Phaser.Scene {
                     this.bombGroup.add(bomb);
                 }
 
-                let frames: number[] = [];
-                let secsRemaining = Math.floor(bombs[i].remaining);
-                if (secsRemaining > 4) {
-                    secsRemaining = 4;
-                }
+                if (bombs[i].remote) {
+                    bomb.setFrame(3);
+                } else {
+                    let frames: number[] = [];
+                    let secsRemaining = Math.floor(bombs[i].remaining);
+                    if (secsRemaining > 4) {
+                        secsRemaining = 4;
+                    }
 
-                for (let n = 4 - secsRemaining; n < 4; n++) {
-                    frames.push(n);
-                }
+                    for (let n = 4 - secsRemaining; n < 4; n++) {
+                        frames.push(n);
+                    }
 
-                let animKey = "bomb_blow_" + bid;
-                if (!this.anims.exists(animKey)) {
-                    this.anims.create({
-                        key: animKey,
-                        frames: this.anims.generateFrameNumbers("bombs", { frames: frames }),
-                        frameRate: 1,
-                        repeat: 0
-                    });
+                    let animKey = "bomb_blow_" + bid;
+                    if (!this.anims.exists(animKey)) {
+                        this.anims.create({
+                            key: animKey,
+                            frames: this.anims.generateFrameNumbers("bombs", { frames: frames }),
+                            frameRate: 1,
+                            repeat: 0
+                        });
+                    }
+                    bomb.play(animKey);
                 }
-                bomb.play(animKey);
                 bomb.setOrigin(0.5);
                 this.bombSprites[bid] = bomb;
                 this.setInterpolationTarget("bomb:" + bid, bomb, bx, by, INTERPOLATION.BOMB);
@@ -1664,6 +1704,28 @@ export class DetonatorGame extends Phaser.Scene {
             }
             if (Math.abs(object.y - target.targetY) < 0.1) {
                 object.y = target.targetY;
+            }
+        }
+    }
+
+    updateBombVisuals(time: number): void {
+        const bombIds = Object.keys(this.bombSprites);
+        for (let i = 0; i < bombIds.length; i++) {
+            const bid = bombIds[i];
+            const sprite = this.bombSprites[bid];
+            const bomb = this.knownBombs.get(bid);
+            if (!sprite || !bomb) {
+                continue;
+            }
+
+            if (bomb.remote) {
+                sprite.setFrame(3);
+                sprite.setTint(0xff7a5c);
+                const pulse = 1.06 + Math.sin(time / 120) * 0.08;
+                sprite.setScale(pulse);
+            } else {
+                sprite.clearTint();
+                sprite.setScale(1);
             }
         }
     }

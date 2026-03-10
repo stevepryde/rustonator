@@ -1,4 +1,5 @@
 import type { PlayerData } from "../js/lib/common/player";
+import TimedStatusStrip from "./TimedStatusStrip";
 
 interface PlayerStatsProps {
   player: PlayerData | null;
@@ -40,6 +41,7 @@ export default function PlayerStats({ player, totalPlayers }: PlayerStatsProps) 
           </tr>
         </tbody>
       </table>
+      <TimedStatusStrip player={player} />
     </div>
   );
 }

@@ -23,6 +23,9 @@ use serde_json::Value;
 use std::sync::LazyLock;
 use tracing::{error, info};
 
+const MAX_SCORE_MULTIPLIER: u32 = 4;
+const KILL_STREAK_WINDOW_SECONDS: f64 = 12.0;
+
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum PlayerFlags {
@@ -78,8 +81,11 @@ pub struct Player {
     bomb_time: BombTime,
     max_bombs: u32,
     cur_bombs: u32,
+    remote_bomb_charges: u32,
     flags: PlayerFlagsList,
     score: u32,
+    score_multiplier: u32,
+    score_multiplier_remaining: f64,
     name: String,
     rank: u32,
     effects: Vec<Effect>,
@@ -105,8 +111,11 @@ impl Player {
             bomb_time: BombTime::from(3.0),
             max_bombs: 1,
             cur_bombs: 0,
+            remote_bomb_charges: 0,
             flags: PlayerFlagsList::new(),
             score: 0,
+            score_multiplier: 1,
+            score_multiplier_remaining: 0.0,
             name: String::new(),
             rank: 0,
             effects: Vec::new(),
@@ -181,7 +190,12 @@ impl Player {
     }
 
     pub fn increase_score(&mut self, amount: u32) {
-        self.score += amount;
+        let multiplier = if self.score_multiplier_remaining > 0.0 {
+            self.score_multiplier.max(1)
+        } else {
+            1
+        };
+        self.score += amount * multiplier;
     }
 
     pub fn decrease_score(&mut self, amount: u32) {
@@ -242,6 +256,27 @@ impl Player {
         }
     }
 
+    pub fn remote_bomb_charges(&self) -> u32 {
+        self.remote_bomb_charges
+    }
+
+    pub fn has_remote_bomb_charges(&self) -> bool {
+        self.remote_bomb_charges > 0
+    }
+
+    pub fn grant_remote_bomb_charges(&mut self, amount: u32) {
+        self.remote_bomb_charges = (self.remote_bomb_charges + amount).min(15);
+    }
+
+    pub fn consume_remote_bomb_charge(&mut self) -> bool {
+        if self.remote_bomb_charges == 0 {
+            return false;
+        }
+
+        self.remote_bomb_charges -= 1;
+        true
+    }
+
     pub fn increase_max_bombs(&mut self) {
         self.max_bombs += 1;
     }
@@ -292,6 +327,7 @@ impl Player {
             EffectType::Invincibility => {
                 self.add_flag(PlayerFlags::Invincible);
             }
+            EffectType::InputInversion => {}
         }
         self.effects.push(effect);
     }
@@ -307,6 +343,7 @@ impl Player {
             EffectType::Invincibility => {
                 self.del_flag(&PlayerFlags::Invincible);
             }
+            EffectType::InputInversion => {}
         }
     }
 
@@ -332,19 +369,45 @@ impl Player {
         self.flags.contains(&flag)
     }
 
-    pub fn add_random_effect(&mut self) -> String {
+    pub fn add_effect_for_duration(
+        &mut self,
+        effect_type: EffectType,
+        min_seconds: f64,
+        max_seconds: f64,
+    ) -> String {
         let effect = Effect::new(
-            EffectType::random(),
-            rand::rng().random_range(3.0f64..10.0f64),
+            effect_type,
+            rand::rng().random_range(min_seconds..max_seconds),
         );
         let name = effect.name();
         self.add_effect(effect);
         name
     }
 
+    pub fn add_random_effect(&mut self) -> String {
+        self.add_effect_for_duration(EffectType::random(), 3.0, 10.0)
+    }
+
     pub fn set_invincible(&mut self) {
         let effect = Effect::new(EffectType::Invincibility, 5.0);
         self.add_effect(effect);
+    }
+
+    pub fn score_multiplier(&self) -> u32 {
+        self.score_multiplier
+    }
+
+    pub fn score_multiplier_remaining(&self) -> f64 {
+        self.score_multiplier_remaining
+    }
+
+    pub fn increase_kill_streak(&mut self) {
+        if self.score_multiplier_remaining > 0.0 {
+            self.score_multiplier = (self.score_multiplier + 1).min(MAX_SCORE_MULTIPLIER);
+        } else {
+            self.score_multiplier = 2;
+        }
+        self.score_multiplier_remaining = KILL_STREAK_WINDOW_SECONDS;
     }
 
     pub async fn handle_player_input(
@@ -446,71 +509,76 @@ impl Player {
                 Ok(true)
             }
             CellType::ItemRandom => {
-                let r: u8 = rand::rng().random_range(0..10);
+                let r: u8 = rand::rng().random_range(0..13);
                 let mut powerup_name = String::new();
                 match r {
-                    0 => {
+                    0 | 1 => {
                         if self.max_bombs() < 6 {
                             self.increase_max_bombs();
                             powerup_name = "+B".to_owned();
+                        } else {
+                            self.increase_score(rand::rng().random_range(2..10) * 10);
+                            powerup_name = "+$".to_owned();
                         }
                     }
-                    1 => {
-                        if self.max_bombs() > 1 {
-                            self.decrease_max_bombs();
-                            powerup_name = "-B".to_owned();
-                        }
-                    }
-                    2 => {
+                    2 | 3 => {
                         if self.range() < BombRange::from(8) {
                             self.increase_range();
                             powerup_name = "+R".to_owned();
-                        }
-                    }
-                    3 => {
-                        if self.range() > BombRange::from(1) {
-                            self.decrease_range();
-                            powerup_name = "-R".to_owned();
+                        } else {
+                            self.increase_score(rand::rng().random_range(2..10) * 10);
+                            powerup_name = "+$".to_owned();
                         }
                     }
                     4 => {
-                        if self.has_flag(PlayerFlags::WalkThroughBombs) {
-                            self.del_flag(&PlayerFlags::WalkThroughBombs);
-                            powerup_name = "-TB".to_owned();
-                        } else {
+                        if !self.has_flag(PlayerFlags::WalkThroughBombs) {
                             self.add_flag(PlayerFlags::WalkThroughBombs);
                             powerup_name = "+TB".to_owned();
+                        } else {
+                            self.increase_score(rand::rng().random_range(2..10) * 10);
+                            powerup_name = "+$".to_owned();
                         }
                     }
-                    5 => {
-                        if self.bomb_time() < BombTime::from(4.0) {
-                            self.increase_bomb_time();
-                            powerup_name = "SB".to_owned();
-                        }
-                    }
-                    6 => {
-                        if self.bomb_time() > BombTime::from(2.0) {
-                            self.decrease_bomb_time();
-                            powerup_name = "FB".to_owned();
-                        }
-                    }
-                    7 => {
-                        if self.score() > 100 {
-                            let pwrup: u32 = rand::rng().random_range(1..10) * 10;
-                            self.decrease_score(pwrup);
-                            powerup_name = "-$".to_owned();
-                        }
-                    }
-                    8 => {
-                        let pwrup: u32 = rand::rng().random_range(1..10) * 10;
+                    5 | 6 => {
+                        let pwrup: u32 = rand::rng().random_range(2..10) * 10;
                         self.increase_score(pwrup);
                         powerup_name = "+$".to_owned();
                     }
-                    _ => powerup_name = self.add_random_effect(),
+                    7 => {
+                        powerup_name =
+                            self.add_effect_for_duration(EffectType::SpeedUp, 6.0, 10.0);
+                    }
+                    8 => {
+                        let effect = Effect::new(EffectType::Invincibility, 14.0);
+                        powerup_name = effect.name();
+                        self.add_effect(effect);
+                    }
+                    9 => {
+                        powerup_name =
+                            self.add_effect_for_duration(EffectType::InputInversion, 4.0, 7.0);
+                    }
+                    10 => {
+                        powerup_name =
+                            self.add_effect_for_duration(EffectType::SlowDown, 3.0, 6.0);
+                    }
+                    11 => {
+                        if self.bomb_time() > BombTime::from(2.0) {
+                            self.decrease_bomb_time();
+                            powerup_name = "FB".to_owned();
+                        } else {
+                            powerup_name =
+                                self.add_effect_for_duration(EffectType::SpeedUp, 6.0, 10.0);
+                        }
+                    }
+                    12 => {
+                        self.grant_remote_bomb_charges(5);
+                        powerup_name = "RB".to_owned();
+                    }
+                    _ => {}
                 }
 
                 if powerup_name.is_empty() {
-                    powerup_name = self.add_random_effect();
+                    powerup_name = self.add_effect_for_duration(EffectType::SpeedUp, 6.0, 10.0);
                 }
 
                 self.ws().send_powerup(&powerup_name).await?;
@@ -521,6 +589,14 @@ impl Player {
     }
 
     pub fn update(&mut self, world: &World, delta_time: f64) {
+        if self.score_multiplier_remaining > 0.0 {
+            self.score_multiplier_remaining -= delta_time;
+            if self.score_multiplier_remaining <= 0.0 {
+                self.score_multiplier_remaining = 0.0;
+                self.score_multiplier = 1;
+            }
+        }
+
         if let PlayerState::Dying = self.state {
             // We're dying. Just update the timer and get out.
             self.kill_timer -= delta_time;

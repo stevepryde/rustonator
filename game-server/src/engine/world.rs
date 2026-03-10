@@ -548,9 +548,10 @@ impl World {
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
         players: &mut PlayerList,
-    )
+    ) -> Vec<crate::engine::player::PlayerId>
     {
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
+        let mut exploded_pids = Vec::new();
         bombs_to_explode.push_back(bomb_id);
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
             if let Some(b) = bombs.get_mut(bomb_id) {
@@ -564,11 +565,14 @@ impl World {
                 if let Some(p) = players.get_mut(&b.pid()) {
                     p.bomb_exploded();
                 }
+                exploded_pids.push(b.pid());
 
                 b.terminate();
                 bombs_to_explode.extend(bombs_cascade);
             }
         }
+
+        exploded_pids
     }
 
     pub fn explode_bomb_path(

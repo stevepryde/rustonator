@@ -8,6 +8,7 @@ pub enum EffectType {
     SpeedUp = 0,
     SlowDown = 1,
     Invincibility = 2,
+    InputInversion = 3,
 }
 
 impl EffectType {
@@ -16,6 +17,7 @@ impl EffectType {
             EffectType::SpeedUp => String::from(">>"),
             EffectType::SlowDown => String::from("<<"),
             EffectType::Invincibility => String::from("∞"),
+            EffectType::InputInversion => String::from("🙃"),
         }
     }
 }
@@ -26,6 +28,7 @@ impl From<u8> for EffectType {
             0 => EffectType::SpeedUp,
             1 => EffectType::SlowDown,
             2 => EffectType::Invincibility,
+            3 => EffectType::InputInversion,
             _ => panic!("Invalid effect type: {}", value),
         }
     }
@@ -33,7 +36,7 @@ impl From<u8> for EffectType {
 
 impl RandEnumFrom<u8> for EffectType {
     fn get_enum_values() -> Vec<u8> {
-        (0..3).collect()
+        (0..4).collect()
     }
 }
 

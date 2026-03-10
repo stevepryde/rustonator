@@ -10,11 +10,17 @@ export enum EffectType {
     Unknown = -1,
     SpeedUp = 0,
     SlowDown = 1,
-    Invincibility = 2
+    Invincibility = 2,
+    InputInversion = 3
 }
 
 export function getRandomEffectType(): EffectType {
-    const values = [0, 1];
+    const values = [
+        EffectType.SpeedUp,
+        EffectType.SlowDown,
+        EffectType.Invincibility,
+        EffectType.InputInversion
+    ];
     return values[Math.floor(Math.random() * values.length)];
 }
 
@@ -61,10 +67,13 @@ export class Effect {
             case EffectType.Invincibility: // Invincible.
                 target.addFlag(PlayerFlags.Invincible);
                 break;
+            case EffectType.InputInversion:
+                this.name = "\u{1F643}";
+                break;
             default:
                 // Unknown effect - just kill it immediately.
                 this.remaining = 0;
-                this.effectType = -1;
+                this.effectType = EffectType.Unknown;
         }
     }
 
@@ -80,10 +89,12 @@ export class Effect {
             case EffectType.Invincibility: // end invincibility
                 target.delFlag(PlayerFlags.Invincible);
                 break;
+            case EffectType.InputInversion:
+                break;
             default:
                 // Unknown effect - just kill it immediately.
                 this.remaining = 0;
-                this.effectType = -1;
+                this.effectType = EffectType.Unknown;
         }
     }
 

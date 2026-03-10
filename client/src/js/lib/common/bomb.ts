@@ -5,6 +5,7 @@ export interface BombData {
   pid: string;
   pname: string;
   active: boolean;
+  remote: boolean;
   x: number;
   y: number;
   remaining: number;
@@ -16,6 +17,7 @@ export class Bomb {
   pid: string;
   pname: string;
   active: boolean;
+  remote: boolean;
   x: number;
   y: number;
   remaining: number;
@@ -26,6 +28,7 @@ export class Bomb {
     this.pid = player.id;
     this.pname = player.name;
     this.active = true;
+    this.remote = false;
     this.x = player.x;
     this.y = player.y;
     this.remaining = player.bombTime;
@@ -38,6 +41,7 @@ export class Bomb {
       pid: this.pid,
       pname: this.pname,
       active: this.active,
+      remote: this.remote,
       x: this.x,
       y: this.y,
       remaining: this.remaining,
@@ -50,6 +54,7 @@ export class Bomb {
     this.pid = data.pid;
     this.pname = data.pname;
     this.active = data.active;
+    this.remote = data.remote;
     this.x = data.x;
     this.y = data.y;
     this.remaining = data.remaining;

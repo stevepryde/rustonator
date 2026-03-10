@@ -255,7 +255,7 @@ impl RustonatorGame {
         }
 
         for bomb_id in explode_new.into_iter() {
-            self.world.explode_bomb(
+            let _ = self.world.explode_bomb(
                 bomb_id,
                 &mut self.bombs,
                 &mut self.explosions,
@@ -273,10 +273,37 @@ impl RustonatorGame {
 
         let pos = player.position().to_map_position(&self.world);
         if let Some(CellType::Empty) = self.world.get_cell(pos) {
-            let bomb = Bomb::new(player, pos);
+            let remote = player.consume_remote_bomb_charge();
+            let bomb = Bomb::new(player, pos, remote);
             player.bomb_placed();
             self.world.add_bomb(bomb, &mut self.bombs);
         }
+    }
+
+    pub fn detonate_remote_bomb_for_player(&mut self, player: &mut Player) -> bool {
+        let remote_bomb_id = self
+            .bombs
+            .iter()
+            .filter(|bomb| bomb.pid() == player.id() && bomb.is_remote() && bomb.is_active())
+            .map(|bomb| bomb.id())
+            .min();
+
+        if let Some(bomb_id) = remote_bomb_id {
+            let exploded_pids = self.world.explode_bomb(
+                bomb_id,
+                &mut self.bombs,
+                &mut self.explosions,
+                &mut self.players,
+            );
+            for pid in exploded_pids {
+                if pid == player.id() {
+                    player.bomb_exploded();
+                }
+            }
+            return true;
+        }
+
+        false
     }
 
     /// Spawn mob at a random mob spawner, and assign it a new target.
@@ -320,6 +347,7 @@ impl RustonatorGame {
                         // Award points to the player that killed this mob.
                         if let Some(p) = self.players.get_mut(&explosion.pid())
                             && !p.is_dead() {
+                                p.increase_kill_streak();
                                 if mob.is_smart() {
                                     p.increase_score(2000);
                                 } else {
@@ -349,7 +377,9 @@ impl RustonatorGame {
 
             if player.is_active() {
                 if player.action().fire() {
-                    self.create_bomb_for_player(&mut player);
+                    if !self.detonate_remote_bomb_for_player(&mut player) {
+                        self.create_bomb_for_player(&mut player);
+                    }
 
                     // Prevent more bombs until the player releases fire.
                     player.action_mut().cease_fire();
@@ -444,6 +474,7 @@ impl RustonatorGame {
                             } else if let Some(p) = self.players.get_mut(&explosion.pid()) {
                                 if !p.is_dead() {
                                     reason = format!("You were killed by '{}'", p.name());
+                                    p.increase_kill_streak();
                                     p.increase_score(1000);
                                 } else {
                                     let pname = explosion.pname();

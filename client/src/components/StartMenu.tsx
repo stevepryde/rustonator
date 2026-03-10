@@ -1,5 +1,6 @@
 import { useCallback, useState, type KeyboardEvent } from "react";
 import { useScores } from "../hooks/useScores";
+import { uiAssets } from "../assets/uiAssets";
 import CharacterSelect from "./CharacterSelect";
 import ScoreBoard from "./ScoreBoard";
 import Footer from "./Footer";
@@ -49,13 +50,13 @@ export default function StartMenu({
     <div
       className="w-full min-h-full p-2.5 overflow-y-auto retro-dotpattern"
       style={{
-        backgroundImage: "url(/assets/screen1_small.jpg)",
+        backgroundImage: `url(${uiAssets.screen1Small})`,
         backgroundSize: "cover",
       }}
     >
       {/* Title */}
       <div className="mx-auto text-center pt-5 w-1/2">
-        <img src="/assets/dstitle.png" alt="Detonator" className="w-[360px] inline-block" />
+        <img src={uiAssets.dstitle} alt="Detonator" className="w-[360px] inline-block" />
       </div>
 
       {/* Main controls box */}
