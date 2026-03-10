@@ -338,24 +338,32 @@ impl World {
 
     pub fn populate_blocks(&mut self, map_positions: &[MapPosition]) {
         let mut new_blocks = HashSet::new();
+        let max_new_blocks = self.zones.zone_count().max(1);
+
         for zone in self.zones.zone_iter_sorted_by_shortfall() {
             if zone.quota_reached() {
                 // We're using a sorted iterator, so no point continuing.
                 break;
             }
 
-            let bx = rand::rng().random_range(0..zone.size().width) + zone.position().x;
-            let by = rand::rng().random_range(0..zone.size().height) + zone.position().y;
-            let blank = self.find_nearest_blank(MapPosition::new(bx, by));
+            for _ in 0..3 {
+                let bx = rand::rng().random_range(0..zone.size().width) + zone.position().x;
+                let by = rand::rng().random_range(0..zone.size().height) + zone.position().y;
+                let blank = self.find_nearest_blank(MapPosition::new(bx, by));
 
-            // Avoid top left corner - it's the safe space for spawning players if no blank
-            // spaces were found.
-            if blank.x == 1 && blank.y == 1 {
-                continue;
+                // Avoid top left corner - it's the safe space for spawning players if no blank
+                // spaces were found.
+                if blank.x == 1 && blank.y == 1 {
+                    continue;
+                }
+
+                if !self.is_nearby_map_entity(blank, map_positions, 4) {
+                    new_blocks.insert(blank);
+                    break;
+                }
             }
 
-            if !self.is_nearby_map_entity(blank, map_positions, 4) {
-                new_blocks.insert(blank);
+            if new_blocks.len() >= max_new_blocks {
                 break;
             }
         }
@@ -634,6 +642,54 @@ impl World {
             }
         }
         bombs_cascade
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clear_mystery_blocks(world: &mut World) {
+        let map_size = *world.sizes().map_size();
+
+        for y in 0..map_size.height {
+            for x in 0..map_size.width {
+                let pos = MapPosition::new(x, y);
+                if matches!(world.get_cell(pos), Some(CellType::Mystery)) {
+                    world.set_cell(pos, CellType::Empty);
+                }
+            }
+        }
+    }
+
+    fn count_mystery_blocks(world: &World) -> usize {
+        let map_size = world.sizes().map_size();
+        let mut count = 0;
+
+        for y in 0..map_size.height {
+            for x in 0..map_size.width {
+                if matches!(world.get_cell(MapPosition::new(x, y)), Some(CellType::Mystery)) {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
+
+    #[test]
+    fn populate_blocks_refills_multiple_blocks_per_pass() {
+        let config = GameConfig::new();
+        let mut world = World::new(47, 47, &config);
+        world.add_mob_spawners();
+        world.populate_initial(&[]);
+        clear_mystery_blocks(&mut world);
+
+        assert_eq!(count_mystery_blocks(&world), 0);
+
+        world.populate_blocks(&[]);
+
+        assert!(count_mystery_blocks(&world) > 1);
     }
 }
 

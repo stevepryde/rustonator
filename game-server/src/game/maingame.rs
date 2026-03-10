@@ -70,6 +70,7 @@ impl RustonatorGame {
     ) -> ZResult<()>
     {
         let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
+        let block_regen_interval = Duration::from_secs(3);
 
         // Limit max FPS.
         let fps = 30.0;
@@ -112,10 +113,17 @@ impl RustonatorGame {
             }
 
             if paused {
-                // Block until a player connects — zero CPU.
-                match player_join_rx.recv().await {
-                    Some(event) => self.handle_connect_event(event),
-                    None => break,
+                let wait_for_regen =
+                    block_regen_interval.saturating_sub(add_blocks_timer.elapsed());
+
+                tokio::select! {
+                    event = player_join_rx.recv() => match event {
+                        Some(event) => self.handle_connect_event(event),
+                        None => break,
+                    },
+                    _ = tokio::time::sleep(wait_for_regen) => {
+                        self.regenerate_blocks_if_due(&mut add_blocks_timer, block_regen_interval);
+                    }
                 }
                 continue;
             }
@@ -146,20 +154,7 @@ impl RustonatorGame {
             }
 
             // Add blocks?
-            if add_blocks_timer.elapsed().as_secs() > 10 {
-                let entities: Vec<MapPosition> = self
-                    .players
-                    .values()
-                    .map(|p| p.position().to_map_position(&self.world))
-                    .chain(
-                        self.mobs
-                            .iter()
-                            .map(|m| m.position().to_map_position(&self.world)),
-                    )
-                    .collect();
-                self.world.populate_blocks(&entities);
-                add_blocks_timer = Instant::now();
-            }
+            self.regenerate_blocks_if_due(&mut add_blocks_timer, block_regen_interval);
 
             count += 1;
 
@@ -172,6 +167,34 @@ impl RustonatorGame {
         }
 
         Ok(())
+    }
+
+    fn block_regen_entities(&self) -> Vec<MapPosition> {
+        self.players
+            .values()
+            .filter(|p| p.is_active())
+            .map(|p| p.position().to_map_position(&self.world))
+            .chain(
+                self.mobs
+                    .iter()
+                    .map(|m| m.position().to_map_position(&self.world)),
+            )
+            .collect()
+    }
+
+    fn regenerate_blocks_if_due(
+        &mut self,
+        add_blocks_timer: &mut Instant,
+        block_regen_interval: Duration,
+    ) -> bool
+    {
+        if add_blocks_timer.elapsed() < block_regen_interval {
+            return false;
+        }
+
+        self.world.populate_blocks(&self.block_regen_entities());
+        *add_blocks_timer = Instant::now();
+        true
     }
 
     fn handle_connect_event(&mut self, event: PlayerConnectEvent) {
@@ -546,5 +569,64 @@ impl RustonatorGame {
                 warn!("Failed to submit score: {e}");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count_mystery_blocks(game: &RustonatorGame) -> usize {
+        let map_size = game.world.sizes().map_size();
+        let mut count = 0;
+
+        for y in 0..map_size.height {
+            for x in 0..map_size.width {
+                if matches!(game.world.get_cell(MapPosition::new(x, y)), Some(CellType::Mystery)) {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
+
+    fn clear_mystery_blocks(game: &mut RustonatorGame) {
+        let map_size = *game.world.sizes().map_size();
+
+        for y in 0..map_size.height {
+            for x in 0..map_size.width {
+                let pos = MapPosition::new(x, y);
+                if matches!(game.world.get_cell(pos), Some(CellType::Mystery)) {
+                    game.world.set_cell(pos, CellType::Empty);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn block_regen_repopulates_world_when_timer_is_due() {
+        let mut game = RustonatorGame::new(47, 47);
+        clear_mystery_blocks(&mut game);
+        assert_eq!(count_mystery_blocks(&game), 0);
+
+        let interval = Duration::from_secs(10);
+        let mut timer = Instant::now() - interval;
+
+        assert!(game.regenerate_blocks_if_due(&mut timer, interval));
+        assert!(count_mystery_blocks(&game) > 0);
+    }
+
+    #[test]
+    fn block_regen_does_not_run_before_timer_is_due() {
+        let mut game = RustonatorGame::new(47, 47);
+        clear_mystery_blocks(&mut game);
+        assert_eq!(count_mystery_blocks(&game), 0);
+
+        let interval = Duration::from_secs(10);
+        let mut timer = Instant::now();
+
+        assert!(!game.regenerate_blocks_if_due(&mut timer, interval));
+        assert_eq!(count_mystery_blocks(&game), 0);
     }
 }
