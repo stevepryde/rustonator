@@ -441,10 +441,13 @@ impl World {
     }
 
     pub fn add_bomb(&mut self, bomb: Bomb, bombs: &mut BombList) {
+        let is_remote = bomb.is_remote();
         let pos = bomb.position();
         let id = bombs.add(bomb);
         self.set_cell(pos, CellType::Bomb);
-        self.update_bomb_path(id, bombs);
+        if !is_remote {
+            self.update_bomb_path(id, bombs);
+        }
         self.data_internal.set_at(pos, InternalCellData::Bomb(id));
     }
 
@@ -480,10 +483,14 @@ impl World {
         let mut bombs_to_follow: VecDeque<BombId> = VecDeque::new();
         bombs_to_follow.push_back(bid);
         let mut seen: HashSet<MapPosition> = HashSet::new();
-        let mut earliest_ts = match bombs.get(bid) {
+        let mut earliest_ts = None;
+
+        match bombs.get(bid) {
             Some(b) => {
                 seen.insert(b.position());
-                b.timestamp()
+                if !b.timestamp().is_zero() {
+                    earliest_ts = Some(b.timestamp());
+                }
             }
             None => {
                 return;
@@ -493,8 +500,11 @@ impl World {
 
         while let Some(bomb_id) = bombs_to_follow.pop_front() {
             if let Some(b) = bombs.get(bomb_id) {
-                if b.timestamp() < earliest_ts {
-                    earliest_ts = b.timestamp();
+                if !b.timestamp().is_zero() {
+                    earliest_ts = Some(match earliest_ts {
+                        Some(existing) if existing <= b.timestamp() => existing,
+                        _ => b.timestamp(),
+                    });
                 }
 
                 for offset in vec![
@@ -535,6 +545,10 @@ impl World {
                 }
             }
         }
+
+        let Some(earliest_ts) = earliest_ts else {
+            return;
+        };
 
         // Now set the earliest timestamp at all locations!
         for pos in path_cells {
@@ -652,6 +666,11 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        comms::playercomm::PlayerComm,
+        engine::{player::{Player, PlayerId}, types::BombList},
+    };
+    use tokio::sync::mpsc;
 
     fn clear_mystery_blocks(world: &mut World) {
         let map_size = *world.sizes().map_size();
@@ -681,6 +700,14 @@ mod tests {
         count
     }
 
+    fn test_player() -> Player {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(PlayerId::from(1), PlayerComm::new(PlayerId::from(1), tx, rx));
+        player.set_name("test");
+        player
+    }
+
     #[test]
     fn populate_blocks_refills_multiple_blocks_per_pass() {
         let config = GameConfig::new();
@@ -694,6 +721,30 @@ mod tests {
         world.populate_blocks(&[]);
 
         assert!(count_mystery_blocks(&world) > 1);
+    }
+
+    #[test]
+    fn remote_bombs_do_not_mark_mob_danger_until_a_timed_bomb_can_trigger_them() {
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+        let mut bombs = BombList::new();
+
+        let mut player = test_player();
+        player.increase_range();
+
+        let remote_pos = MapPosition::new(5, 5);
+        let timed_pos = MapPosition::new(5, 3);
+        let remote_path_pos = MapPosition::new(6, 5);
+
+        world.add_bomb(Bomb::new(&player, remote_pos, true), &mut bombs);
+
+        assert!(world.get_mob_data(remote_path_pos).is_none());
+
+        world.add_bomb(Bomb::new(&player, timed_pos, false), &mut bombs);
+
+        assert!(world
+            .get_mob_data(remote_path_pos)
+            .is_some_and(|ts| !ts.is_zero()));
     }
 }
 

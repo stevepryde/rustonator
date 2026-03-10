@@ -148,6 +148,13 @@ pub struct Bomb {
 
 impl Bomb {
     pub fn new(player: &Player, position: MapPosition, remote: bool) -> Self {
+        let remaining = player.bomb_time();
+        let timestamp = if remote {
+            Timestamp::zero()
+        } else {
+            Timestamp::new() + remaining
+        };
+
         Bomb {
             id: BombId::from(0),
             pid: player.id(),
@@ -155,10 +162,9 @@ impl Bomb {
             active: true,
             remote,
             position,
-            remaining: player.bomb_time(),
+            remaining,
             range: player.range(),
-            // Set the timestamp to the explosion timestamp
-            timestamp: Timestamp::new() + player.bomb_time(),
+            timestamp,
         }
     }
 
@@ -195,6 +201,10 @@ impl Bomb {
     }
 
     pub fn tick(&mut self, delta_time: f64) -> bool {
+        if self.remote {
+            return false;
+        }
+
         self.remaining -= delta_time;
         if self.remaining.is_done() {
             self.remaining.clear();
@@ -213,5 +223,41 @@ impl Bomb {
 impl HasId<BombId> for Bomb {
     fn set_id(&mut self, id: BombId) {
         self.id = id;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        comms::playercomm::PlayerComm,
+        engine::player::PlayerId,
+    };
+    use tokio::sync::mpsc;
+
+    fn test_player() -> Player {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(PlayerId::from(1), PlayerComm::new(PlayerId::from(1), tx, rx));
+        player.set_name("test");
+        player
+    }
+
+    #[test]
+    fn remote_bombs_do_not_schedule_a_timer() {
+        let player = test_player();
+        let bomb = Bomb::new(&player, MapPosition::new(1, 1), true);
+
+        assert!(bomb.is_remote());
+        assert!(bomb.timestamp().is_zero());
+    }
+
+    #[test]
+    fn remote_bombs_do_not_auto_explode_when_ticked() {
+        let player = test_player();
+        let mut bomb = Bomb::new(&player, MapPosition::new(1, 1), true);
+
+        assert!(!bomb.tick(30.0));
+        assert!(bomb.is_active());
     }
 }
