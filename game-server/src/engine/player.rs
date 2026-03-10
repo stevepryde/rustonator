@@ -545,7 +545,31 @@ impl Player {
 
         // Lock to gridlines.
         let tolerance = world.sizes().tile_size().width as f64 * 0.3;
-        if tmp_action.x() != 0 {
+        if tmp_action.prefer_y() {
+            if tmp_action.y() != 0 {
+                // Moving vertically, make sure we're on a gridline.
+                let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
+                if target_x > self.position().x + tolerance {
+                    tmp_action.setxy(1, 0);
+                } else if target_x < self.position().x - tolerance {
+                    tmp_action.setxy(-1, 0);
+                } else {
+                    self.position_mut().x = target_x;
+                    tmp_action.setxy(0, tmp_action.y());
+                }
+            } else if tmp_action.x() != 0 {
+                // Moving horizontally, make sure we're on a gridline.
+                let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
+                if target_y > self.position().y + tolerance {
+                    tmp_action.setxy(0, 1);
+                } else if target_y < self.position().y - tolerance {
+                    tmp_action.setxy(0, -1);
+                } else {
+                    self.position_mut().y = target_y;
+                    tmp_action.setxy(tmp_action.x(), 0);
+                }
+            }
+        } else if tmp_action.x() != 0 {
             // Moving horizontally, make sure we're on a gridline.
             let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
             if target_y > self.position().y + tolerance {

@@ -7,6 +7,7 @@ export interface EffectTarget {
 }
 
 export enum EffectType {
+    Unknown = -1,
     SpeedUp = 0,
     SlowDown = 1,
     Invincibility = 2

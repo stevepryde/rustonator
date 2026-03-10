@@ -38,6 +38,15 @@ interface TouchActions {
     bomb: boolean;
 }
 
+type DirectionKey = "up" | "down" | "left" | "right";
+
+interface DirectionState {
+    up: boolean;
+    down: boolean;
+    left: boolean;
+    right: boolean;
+}
+
 interface KeyBindings {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -53,6 +62,17 @@ export interface DeadData {
 
 export interface PowerupData {
     text: string;
+}
+
+interface InterpolationConfig {
+    followRate: number;
+    snapDistance: number;
+}
+
+interface InterpolationTarget extends InterpolationConfig {
+    object: { x: number; y: number; active?: boolean };
+    targetX: number;
+    targetY: number;
 }
 
 //  The Google WebFont Loader will look for this object, so create it before loading the script.
@@ -75,6 +95,14 @@ const DEPTH = {
     SHADE: 90,
     CONTROLS: 100
 };
+
+const INTERPOLATION = {
+    LOCAL_PLAYER: { followRate: 28, snapDistance: 96 },
+    REMOTE_PLAYER: { followRate: 14, snapDistance: 96 },
+    MOB: { followRate: 14, snapDistance: 96 },
+    BOMB: { followRate: 18, snapDistance: 48 },
+    EXPLOSION: { followRate: 18, snapDistance: 48 }
+} as const;
 
 export class DetonatorGame extends Phaser.Scene {
     playerName!: string;
@@ -134,6 +162,7 @@ export class DetonatorGame extends Phaser.Scene {
     explosionEmitters: { [x: string]: Phaser.GameObjects.Particles.ParticleEmitter } = {};
     powerupSprites: Phaser.GameObjects.Text[] = [];
     playerNames: { [x: string]: Phaser.GameObjects.Text } = {};
+    interpolationTargets: { [x: string]: InterpolationTarget } = {};
     playerSpriteServer: Phaser.GameObjects.Sprite | null = null;
     knownPlayers = new ObjectPool<Player>();
     knownMobs = new ObjectPool<Mob>();
@@ -144,6 +173,19 @@ export class DetonatorGame extends Phaser.Scene {
     flickerCount = 0;
 
     touchEnabled: boolean = false;
+    directionPressOrder: Record<DirectionKey, number> = {
+        up: 0,
+        down: 0,
+        left: 0,
+        right: 0
+    };
+    previousDirectionState: DirectionState = {
+        up: false,
+        down: false,
+        left: false,
+        right: false
+    };
+    directionSequence: number = 0;
     leaderboardNames: Phaser.GameObjects.Text[] = [];
     leaderboardScores: Phaser.GameObjects.Text[] = [];
     leaderboardShade: Phaser.GameObjects.Image | null = null;
@@ -287,6 +329,7 @@ export class DetonatorGame extends Phaser.Scene {
 
         this.knownExplosions.clear();
         this.explosionEmitters = {};
+        this.interpolationTargets = {};
 
         this.worldSprites = [];
         this.playerSpriteServer = null;
@@ -296,6 +339,19 @@ export class DetonatorGame extends Phaser.Scene {
         this.leaderboardNames = [];
         this.leaderboardScores = [];
         this.dyingSprites = [];
+        this.directionPressOrder = {
+            up: 0,
+            down: 0,
+            left: 0,
+            right: 0
+        };
+        this.previousDirectionState = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+        this.directionSequence = 0;
 
         if (this.phaserGame) {
             this.phaserGame.destroy(true);
@@ -461,6 +517,8 @@ export class DetonatorGame extends Phaser.Scene {
         }
 
         this.handleTouch();
+        this.updateInterpolatedObjects(delta / 1000);
+        this.syncPlayerNames();
 
         if (this.clientElapsedMS >= this.minMS) {
 
@@ -471,21 +529,16 @@ export class DetonatorGame extends Phaser.Scene {
 
             this.curAction.x = 0;
             this.curAction.y = 0;
+            this.curAction.preferY = false;
             this.curAction.fire = false;
             this.curAction.deltaTime = 1.0 / targetFPS;
             if (this.mykeys && this.altkeys) {
-                if (this.mykeys.left.isDown || this.altkeys.left.isDown || this.touchActions["left"]) {
-                    this.curAction.x -= 1;
-                }
-                if (this.mykeys.right.isDown || this.altkeys.right.isDown || this.touchActions["right"]) {
-                    this.curAction.x += 1;
-                }
-                if (this.mykeys.up.isDown || this.altkeys.up.isDown || this.touchActions["up"]) {
-                    this.curAction.y -= 1;
-                }
-                if (this.mykeys.down.isDown || this.altkeys.down.isDown || this.touchActions["down"]) {
-                    this.curAction.y += 1;
-                }
+                const directionState = this.getDirectionalState();
+                this.updateDirectionPriority(directionState);
+                const resolvedDirection = this.resolveDirectionState(directionState);
+                this.curAction.x = resolvedDirection.x;
+                this.curAction.y = resolvedDirection.y;
+                this.curAction.preferY = resolvedDirection.preferY;
                 if (this.mykeys.fire.isDown || this.altkeys.fire.isDown || this.touchActions["bomb"]) {
                     if (!this.fireflag) {
                         this.curAction.fire = true;
@@ -602,6 +655,57 @@ export class DetonatorGame extends Phaser.Scene {
                 this.touchActions[actionlabel] = true;
             }
         }
+    }
+
+    getDirectionalState(): DirectionState {
+        return {
+            up: !!(this.mykeys?.up.isDown || this.altkeys?.up.isDown || this.touchActions.up),
+            down: !!(this.mykeys?.down.isDown || this.altkeys?.down.isDown || this.touchActions.down),
+            left: !!(this.mykeys?.left.isDown || this.altkeys?.left.isDown || this.touchActions.left),
+            right: !!(this.mykeys?.right.isDown || this.altkeys?.right.isDown || this.touchActions.right)
+        };
+    }
+
+    updateDirectionPriority(directionState: DirectionState): void {
+        const directions: DirectionKey[] = ["up", "down", "left", "right"];
+        for (let i = 0; i < directions.length; i++) {
+            const direction = directions[i];
+            if (directionState[direction] && !this.previousDirectionState[direction]) {
+                this.directionPressOrder[direction] = ++this.directionSequence;
+            }
+            this.previousDirectionState[direction] = directionState[direction];
+        }
+    }
+
+    resolveAxisDirection(
+        negative: DirectionKey,
+        positive: DirectionKey,
+        directionState: DirectionState
+    ): number {
+        if (directionState[negative] === directionState[positive]) {
+            if (!directionState[negative]) {
+                return 0;
+            }
+
+            return this.directionPressOrder[negative] > this.directionPressOrder[positive]
+                ? -1
+                : 1;
+        }
+
+        return directionState[negative] ? -1 : 1;
+    }
+
+    resolveDirectionState(directionState: DirectionState): { x: number; y: number; preferY: boolean } {
+        const x = this.resolveAxisDirection("left", "right", directionState);
+        const y = this.resolveAxisDirection("up", "down", directionState);
+
+        if (x !== 0 && y !== 0) {
+            const xOrder = x < 0 ? this.directionPressOrder.left : this.directionPressOrder.right;
+            const yOrder = y < 0 ? this.directionPressOrder.up : this.directionPressOrder.down;
+            return { x, y, preferY: yOrder > xOrder };
+        }
+
+        return { x, y, preferY: y !== 0 };
     }
 
     spriteContains(sprite: Phaser.GameObjects.Sprite, x: number, y: number): boolean {
@@ -799,6 +903,7 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     destroyPlayerSprite(pid: string): void {
+        this.removeInterpolationTarget("player:" + pid);
         if (pid in this.playerSprites) {
             let sprite = this.playerSprites[pid];
             sprite.stop();
@@ -808,6 +913,7 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     destroyMobSprite(mid: string): void {
+        this.removeInterpolationTarget("mob:" + mid);
         if (mid in this.mobSprites) {
             this.mobSprites[mid].setActive(false).setVisible(false);
             this.mobSprites[mid].destroy();
@@ -824,6 +930,7 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     destroyBombSprite(bid: string): void {
+        this.removeInterpolationTarget("bomb:" + bid);
         if (bid in this.bombSprites) {
             this.bombSprites[bid].setActive(false).setVisible(false);
             this.bombSprites[bid].destroy();
@@ -832,6 +939,7 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     destroyExplosion(eid: string): void {
+        this.removeInterpolationTarget("explosion:" + eid);
         if (eid in this.explosionEmitters) {
             this.explosionEmitters[eid].stop();
             this.explosionEmitters[eid].destroy();
@@ -1063,12 +1171,19 @@ export class DetonatorGame extends Phaser.Scene {
 
                     // curPlayer sprite will be updated independently during update();
                 } else {
-                    this.playerSprites[pid].x = kPlayer.x;
-                    this.playerSprites[pid].y = kPlayer.y;
-
-                    this.setSprite(this.playerSprites[pid], kPlayer.action, kPlayer.image);
-
-                    this.movePlayerName(kPlayer);
+                    sprite = this.playerSprites[pid];
+                    this.setInterpolationTarget(
+                        "player:" + pid,
+                        sprite,
+                        kPlayer.x,
+                        kPlayer.y,
+                        INTERPOLATION.REMOTE_PLAYER
+                    );
+                    this.setSprite(
+                        sprite,
+                        this.resolveRenderAction(sprite.x, sprite.y, kPlayer.x, kPlayer.y, kPlayer.action),
+                        kPlayer.image
+                    );
                 }
 
                 // Invincibility? (skip if dead — death animation controls alpha)
@@ -1123,6 +1238,15 @@ export class DetonatorGame extends Phaser.Scene {
 
                 sprite.setOrigin(0.5);
                 this.playerSprites[pid] = sprite;
+                this.setInterpolationTarget(
+                    "player:" + pid,
+                    sprite,
+                    kPlayer.x,
+                    kPlayer.y,
+                    pid === this.curPlayer?.id
+                        ? INTERPOLATION.LOCAL_PLAYER
+                        : INTERPOLATION.REMOTE_PLAYER
+                );
             }
         }
 
@@ -1145,28 +1269,12 @@ export class DetonatorGame extends Phaser.Scene {
             if (mid in this.mobSprites) {
                 // Update mob data.
                 sprite = this.mobSprites[mid];
-
-                sprite.x = kMob.x;
-                sprite.y = kMob.y;
-
-                let mobAction = mobs[i].action;
-                let anim = "updown";
-
-                if (mobAction.x < 0) {
-                    anim = "left";
-                    sprite.scaleX = -1;
-                } else if (mobAction.x > 0) {
-                    anim = "right";
-                    sprite.scaleX = 1;
-                } else if (mobAction.y !== 0) {
-                    anim = "updown";
-                }
-
-                let animKey = kMob.image + "_" + anim;
-                let curAnimKey = sprite.anims.currentAnim ? sprite.anims.currentAnim.key : null;
-                if (curAnimKey !== animKey || !sprite.anims.isPlaying) {
-                    sprite.play(animKey);
-                }
+                this.setInterpolationTarget("mob:" + mid, sprite, kMob.x, kMob.y, INTERPOLATION.MOB);
+                this.setSprite(
+                    sprite,
+                    this.resolveRenderAction(sprite.x, sprite.y, kMob.x, kMob.y, kMob.action),
+                    kMob.image
+                );
             } else {
                 // spawn new sprite for this mob.
                 if (!kMob.image) {
@@ -1182,6 +1290,7 @@ export class DetonatorGame extends Phaser.Scene {
 
                 sprite.setOrigin(0.5);
                 this.mobSprites[mid] = sprite;
+                this.setInterpolationTarget("mob:" + mid, sprite, kMob.x, kMob.y, INTERPOLATION.MOB);
             }
         }
 
@@ -1202,8 +1311,13 @@ export class DetonatorGame extends Phaser.Scene {
             let by = bombs[i].y * this.world.tileheight + halftileheight;
 
             if (bid in this.bombSprites) {
-                this.bombSprites[bid].x = bx;
-                this.bombSprites[bid].y = by;
+                this.setInterpolationTarget(
+                    "bomb:" + bid,
+                    this.bombSprites[bid],
+                    bx,
+                    by,
+                    INTERPOLATION.BOMB
+                );
             } else {
                 let bomb = this.add.sprite(bx, by, "bombs");
                 bomb.setDepth(DEPTH.BOMB);
@@ -1233,6 +1347,7 @@ export class DetonatorGame extends Phaser.Scene {
                 bomb.play(animKey);
                 bomb.setOrigin(0.5);
                 this.bombSprites[bid] = bomb;
+                this.setInterpolationTarget("bomb:" + bid, bomb, bx, by, INTERPOLATION.BOMB);
             }
         }
 
@@ -1253,7 +1368,13 @@ export class DetonatorGame extends Phaser.Scene {
             let ey = explosions[i].y * this.world.tileheight + halftileheight;
 
             if (eid in this.explosionEmitters) {
-                this.explosionEmitters[eid].setPosition(ex, ey);
+                this.setInterpolationTarget(
+                    "explosion:" + eid,
+                    this.explosionEmitters[eid],
+                    ex,
+                    ey,
+                    INTERPOLATION.EXPLOSION
+                );
             } else {
                 let ms = Math.floor(explosions[i].remaining * 1200);
 
@@ -1276,6 +1397,13 @@ export class DetonatorGame extends Phaser.Scene {
                 emitter.explode(3);
 
                 this.explosionEmitters[eid] = emitter;
+                this.setInterpolationTarget(
+                    "explosion:" + eid,
+                    emitter,
+                    ex,
+                    ey,
+                    INTERPOLATION.EXPLOSION
+                );
             }
         }
 
@@ -1372,16 +1500,19 @@ export class DetonatorGame extends Phaser.Scene {
             this.movePlayer(this.tmpPlayer);
         }
 
-        this.playerSprites[pid].x = this.tmpPlayer.x;
-        this.playerSprites[pid].y = this.tmpPlayer.y;
+        this.setInterpolationTarget(
+            "player:" + pid,
+            this.playerSprites[pid],
+            this.tmpPlayer.x,
+            this.tmpPlayer.y,
+            INTERPOLATION.LOCAL_PLAYER
+        );
 
         // Play animation according to direction.
         this.setSprite(this.playerSprites[pid], this.tmpPlayer.action, this.tmpPlayer.image);
     }
 
     movePlayer(player: Player): void {
-        let deltaTime = 1.0 / targetFPS;
-
         // Move player.
         let mx = this.world.toMapX(player.x);
         let my = this.world.toMapY(player.y);
@@ -1395,6 +1526,7 @@ export class DetonatorGame extends Phaser.Scene {
         let tmpaction = {
             x: player.action.x,
             y: player.action.y,
+            preferY: !!player.action.preferY,
             deltaTime: player.action.deltaTime,
             fire: false,
             id: 0
@@ -1404,7 +1536,31 @@ export class DetonatorGame extends Phaser.Scene {
 
         // Lock to gridlines.
         let tolerance = this.world.tilewidth * 0.3;
-        if (tmpaction.x !== 0) {
+        if (tmpaction.preferY) {
+            if (tmpaction.y !== 0) {
+                if (targetX > player.x + tolerance) {
+                    tmpaction.y = 0;
+                    tmpaction.x = 1;
+                } else if (targetX < player.x - tolerance) {
+                    tmpaction.y = 0;
+                    tmpaction.x = -1;
+                } else {
+                    player.x = targetX;
+                    tmpaction.x = 0;
+                }
+            } else if (tmpaction.x !== 0) {
+                if (targetY > player.y + tolerance) {
+                    tmpaction.x = 0;
+                    tmpaction.y = 1;
+                } else if (targetY < player.y - tolerance) {
+                    tmpaction.x = 0;
+                    tmpaction.y = -1;
+                } else {
+                    player.y = targetY;
+                    tmpaction.y = 0;
+                }
+            }
+        } else if (tmpaction.x !== 0) {
             if (targetY > player.y + tolerance) {
                 tmpaction.x = 0;
                 tmpaction.y = 1;
@@ -1450,11 +1606,116 @@ export class DetonatorGame extends Phaser.Scene {
         }
     }
 
+    setInterpolationTarget(
+        key: string,
+        object: { x: number; y: number; active?: boolean },
+        targetX: number,
+        targetY: number,
+        config: InterpolationConfig
+    ): void {
+        let target = this.interpolationTargets[key];
+        if (!target || target.object !== object) {
+            this.interpolationTargets[key] = {
+                object,
+                targetX,
+                targetY,
+                followRate: config.followRate,
+                snapDistance: config.snapDistance
+            };
+            object.x = targetX;
+            object.y = targetY;
+            return;
+        }
+
+        target.followRate = config.followRate;
+        target.snapDistance = config.snapDistance;
+
+        if (Phaser.Math.Distance.Between(object.x, object.y, targetX, targetY) > target.snapDistance) {
+            object.x = targetX;
+            object.y = targetY;
+        }
+
+        target.targetX = targetX;
+        target.targetY = targetY;
+    }
+
+    removeInterpolationTarget(key: string): void {
+        delete this.interpolationTargets[key];
+    }
+
+    updateInterpolatedObjects(deltaSeconds: number): void {
+        const keys = Object.keys(this.interpolationTargets);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const target = this.interpolationTargets[key];
+            const object = target.object;
+
+            if (object.active === false) {
+                delete this.interpolationTargets[key];
+                continue;
+            }
+
+            const alpha = 1 - Math.exp(-target.followRate * deltaSeconds);
+            object.x = Phaser.Math.Linear(object.x, target.targetX, alpha);
+            object.y = Phaser.Math.Linear(object.y, target.targetY, alpha);
+
+            if (Math.abs(object.x - target.targetX) < 0.1) {
+                object.x = target.targetX;
+            }
+            if (Math.abs(object.y - target.targetY) < 0.1) {
+                object.y = target.targetY;
+            }
+        }
+    }
+
+    syncPlayerNames(): void {
+        const playerIds = Object.keys(this.playerNames);
+        for (let i = 0; i < playerIds.length; i++) {
+            const pid = playerIds[i];
+            const sprite = this.playerSprites[pid];
+            const text = this.playerNames[pid];
+            if (!sprite || !text) {
+                continue;
+            }
+
+            text.x = sprite.x;
+            text.y = sprite.y - 20;
+        }
+    }
+
+    resolveRenderAction(
+        currentX: number,
+        currentY: number,
+        targetX: number,
+        targetY: number,
+        fallback: ActionData
+    ): ActionData {
+        if (fallback.x !== 0 || fallback.y !== 0) {
+            return fallback;
+        }
+
+        const dx = targetX - currentX;
+        const dy = targetY - currentY;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+            return fallback;
+        }
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            return { ...fallback, x: dx > 0 ? 1 : -1, y: 0 };
+        }
+
+        return { ...fallback, x: 0, y: dy > 0 ? 1 : -1 };
+    }
+
     setSprite(sprite: Phaser.GameObjects.Sprite, action: ActionData, imageKey: string): void {
         if (action.x !== 0 || action.y !== 0) {
             let anim: string = "";
 
-            if (action.x < 0) {
+            if (action.preferY && action.y < 0) {
+                anim = "up";
+            } else if (action.preferY && action.y > 0) {
+                anim = "down";
+            } else if (action.x < 0) {
                 anim = "left";
                 sprite.scaleX = -1;
             } else if (action.x > 0) {

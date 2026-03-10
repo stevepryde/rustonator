@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct Action {
     x: i32,
     y: i32,
+    #[serde(rename = "preferY", default)]
+    prefer_y: bool,
     fire: bool,
     id: u32,
     #[serde(rename = "deltaTime")]
@@ -40,6 +42,10 @@ impl Action {
         self.fire
     }
 
+    pub fn prefer_y(&self) -> bool {
+        self.prefer_y
+    }
+
     pub fn cease_fire(&mut self) {
         self.fire = false;
     }
@@ -47,6 +53,7 @@ impl Action {
     pub fn clear(&mut self) {
         self.x = 0;
         self.y = 0;
+        self.prefer_y = false;
         self.fire = false;
         // self.id = 0;
         self.delta_time = 0.0;
@@ -56,6 +63,10 @@ impl Action {
         self.x = Self::clamp(x);
         self.y = Self::clamp(y);
         self.fire = fire;
+    }
+
+    pub fn set_prefer_y(&mut self, prefer_y: bool) {
+        self.prefer_y = prefer_y;
     }
 
     pub fn setxy(&mut self, x: i32, y: i32) {
