@@ -23,9 +23,9 @@ use tokio::{
     time::{Duration, Instant},
 };
 
+const MOB_CAP_DENSITY: f64 = 40.0 / (47.0 * 47.0);
+
 pub struct RustonatorGame {
-    width: u32,
-    height: u32,
     world: World,
     players: PlayerList,
     mobs: MobList,
@@ -50,8 +50,6 @@ impl RustonatorGame {
             .unwrap_or_else(|_| "dev-secret".to_string());
 
         Self {
-            width,
-            height,
             world,
             players: PlayerList::new(),
             mobs: MobList::new(),
@@ -64,12 +62,18 @@ impl RustonatorGame {
         }
     }
 
+    fn max_mobs(&self) -> usize {
+        let map_size = self.world.sizes().map_size();
+        ((map_size.width as f64 * map_size.height as f64) * MOB_CAP_DENSITY)
+            .round()
+            .max(1.0) as usize
+    }
+
     pub async fn game_loop(
         &mut self,
         mut player_join_rx: Receiver<PlayerConnectEvent>,
     ) -> ZResult<()>
     {
-        let max_mobs = (self.width as f64 * self.height as f64 * 0.4) as usize;
         let block_regen_interval = Duration::from_secs(3);
 
         // Limit max FPS.
@@ -145,7 +149,7 @@ impl RustonatorGame {
 
             // Spawn new mob ?
             if mob_spawn_timer.elapsed().as_secs_f64() > next_mob_spawn_seconds {
-                if self.mobs.len() < max_mobs {
+                if self.mobs.len() < self.max_mobs() {
                     self.spawn_mob();
                 }
 
@@ -659,5 +663,20 @@ mod tests {
 
         assert!(!game.regenerate_blocks_if_due(&mut timer, interval));
         assert_eq!(count_mystery_blocks(&game), 0);
+    }
+
+    #[test]
+    fn mob_cap_scales_to_forty_for_current_map_size() {
+        let game = RustonatorGame::new(47, 47);
+        assert_eq!(game.max_mobs(), 40);
+    }
+
+    #[test]
+    fn mob_cap_scales_with_map_size() {
+        let small = RustonatorGame::new(23, 23);
+        let large = RustonatorGame::new(71, 71);
+
+        assert!(small.max_mobs() < 40);
+        assert!(large.max_mobs() > 40);
     }
 }

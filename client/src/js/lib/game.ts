@@ -3,6 +3,7 @@ import { gameBridge } from "../../bridge/GameBridge";
 import { Player, PlayerData } from "./common/player";
 import { Action, ActionData } from "./common/action";
 import { ChunkData, World, WorldData } from "./common/world";
+import CellType from "./common/celltypes";
 import { ObjectPool } from "./objectpool";
 import { Mob, MobData } from "./common/mob";
 import { BombData } from "./common/bomb";
@@ -103,6 +104,9 @@ const INTERPOLATION = {
     BOMB: { followRate: 18, snapDistance: 48 },
     EXPLOSION: { followRate: 18, snapDistance: 48 }
 } as const;
+
+const MAX_PREDICTION_STEP_SECONDS = 0.05;
+const FAST_CORRECTION_FOLLOW_RATE = 42;
 
 export class DetonatorGame extends Phaser.Scene {
     playerName!: string;
@@ -1553,21 +1557,29 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     movePlayer(player: Player): void {
-        // Move player.
+        const deltaTime = player.action.deltaTime;
+        const stepCount = Math.max(1, Math.ceil(deltaTime / MAX_PREDICTION_STEP_SECONDS));
+        const stepDelta = deltaTime / stepCount;
+
+        for (let i = 0; i < stepCount; i++) {
+            this.ensureValidPredictedPlayerPosition(player);
+            this.movePlayerStep(player, stepDelta);
+            this.ensureValidPredictedPlayerPosition(player);
+        }
+    }
+
+    movePlayerStep(player: Player, deltaTime: number): void {
         let mx = this.world.toMapX(player.x);
         let my = this.world.toMapY(player.y);
         let targetX = this.world.toScreenX(mx);
         let targetY = this.world.toScreenY(my);
-        if (this.world.getcell(mx, my) === 1) {
-            return;
-        }
 
         // Prevent illegal moves.
         let tmpaction = {
             x: player.action.x,
             y: player.action.y,
             preferY: !!player.action.preferY,
-            deltaTime: player.action.deltaTime,
+            deltaTime,
             fire: false,
             id: 0
         };
@@ -1629,6 +1641,28 @@ export class DetonatorGame extends Phaser.Scene {
         this.fixPositionAndTmpAction(player, tmpaction, mx, my, targetX, targetY);
     }
 
+    ensureValidPredictedPlayerPosition(player: Player): void {
+        const mx = this.world.toMapX(player.x);
+        const my = this.world.toMapY(player.y);
+        if (!this.isBlockedPlayerCell(player, this.world.getcell(mx, my))) {
+            return;
+        }
+
+        const blank = this.world.findNearestBlank(mx, my);
+        player.x = this.world.toScreenX(blank.x);
+        player.y = this.world.toScreenY(blank.y);
+    }
+
+    isBlockedPlayerCell(player: Player, cellType: CellType): boolean {
+        switch (cellType) {
+            case CellType.Wall:
+            case CellType.Mystery:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     fixPositionAndTmpAction(player: Player, tmpaction: ActionData, mx: number, my: number, targetX: number, targetY: number) {
         if (tmpaction.x !== 0 && !player.canPass(this.world.getcell(mx + tmpaction.x, my))) {
             if ((tmpaction.x < 0 && player.x <= targetX) ||
@@ -1670,7 +1704,12 @@ export class DetonatorGame extends Phaser.Scene {
         target.followRate = config.followRate;
         target.snapDistance = config.snapDistance;
 
-        if (Phaser.Math.Distance.Between(object.x, object.y, targetX, targetY) > target.snapDistance) {
+        const correction = this.getInterpolationCorrection(key, object.x, object.y, targetX, targetY, config);
+        target.followRate = correction.followRate;
+        target.snapDistance = correction.snapDistance;
+
+        if (correction.snapNow
+            || Phaser.Math.Distance.Between(object.x, object.y, targetX, targetY) > target.snapDistance) {
             object.x = targetX;
             object.y = targetY;
         }
@@ -1681,6 +1720,116 @@ export class DetonatorGame extends Phaser.Scene {
 
     removeInterpolationTarget(key: string): void {
         delete this.interpolationTargets[key];
+    }
+
+    getInterpolationCorrection(
+        key: string,
+        currentX: number,
+        currentY: number,
+        targetX: number,
+        targetY: number,
+        config: InterpolationConfig
+    ): { followRate: number; snapDistance: number; snapNow: boolean } {
+        let followRate = config.followRate;
+        let snapDistance = config.snapDistance;
+
+        if (this.curPlayer && key === "player:" + this.curPlayer.id) {
+            const correctionDistance = Phaser.Math.Distance.Between(currentX, currentY, targetX, targetY);
+            if (correctionDistance > this.world.tilewidth * 0.75) {
+                followRate = Math.max(followRate, FAST_CORRECTION_FOLLOW_RATE);
+                snapDistance = Math.min(snapDistance, this.world.tilewidth * 2);
+            }
+        }
+
+        const snapNow = this.isBlockedInterpolationCorrection(key, currentX, currentY, targetX, targetY);
+        return { followRate, snapDistance, snapNow };
+    }
+
+    isBlockedInterpolationCorrection(
+        key: string,
+        currentX: number,
+        currentY: number,
+        targetX: number,
+        targetY: number
+    ): boolean {
+        if (!key.startsWith("player:") && !key.startsWith("mob:")) {
+            return false;
+        }
+
+        const currentCell = this.world.getcell(this.world.toMapX(currentX), this.world.toMapY(currentY));
+        if (this.isInterpolationBlockingCell(key, currentCell)) {
+            return true;
+        }
+
+        return this.pathCrossesBlockedCell(key, currentX, currentY, targetX, targetY);
+    }
+
+    isInterpolationBlockingCell(key: string, cellType: CellType): boolean {
+        switch (cellType) {
+            case CellType.Wall:
+            case CellType.Mystery:
+                return true;
+            case CellType.Bomb:
+                return key.startsWith("mob:");
+            default:
+                return false;
+        }
+    }
+
+    getInterpolationPlayer(key: string): Player | null {
+        if (!key.startsWith("player:")) {
+            return null;
+        }
+
+        const pid = key.slice("player:".length);
+        if (this.tmpPlayer && pid === this.tmpPlayer.id) {
+            return this.tmpPlayer;
+        }
+        if (this.curPlayer && pid === this.curPlayer.id) {
+            return this.curPlayer;
+        }
+
+        return this.knownPlayers.get(pid);
+    }
+
+    pathCrossesBlockedCell(
+        key: string,
+        fromX: number,
+        fromY: number,
+        toX: number,
+        toY: number
+    ): boolean {
+        let x0 = this.world.toMapX(fromX);
+        let y0 = this.world.toMapY(fromY);
+        const x1 = this.world.toMapX(toX);
+        const y1 = this.world.toMapY(toY);
+        const dx = Math.abs(x1 - x0);
+        const dy = Math.abs(y1 - y0);
+        const sx = x0 < x1 ? 1 : -1;
+        const sy = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+        let firstCell = true;
+
+        while (true) {
+            if (!firstCell && this.isInterpolationBlockingCell(key, this.world.getcell(x0, y0))) {
+                return true;
+            }
+
+            if (x0 === x1 && y0 === y1) {
+                return false;
+            }
+
+            firstCell = false;
+            const doubleErr = err * 2;
+            if (doubleErr > -dy) {
+                err -= dy;
+                x0 += sx;
+            }
+            if (doubleErr < dx) {
+                err += dx;
+                y0 += sy;
+            }
+        }
     }
 
     updateInterpolatedObjects(deltaSeconds: number): void {

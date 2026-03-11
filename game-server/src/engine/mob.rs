@@ -16,6 +16,8 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
 
+const MAX_MOVEMENT_STEP_SECONDS: f64 = 0.05;
+
 #[derive(Copy, Clone, Debug)]
 pub enum MobTargetMode {
     // Pick a nearby spot and try to reach it.
@@ -220,7 +222,7 @@ impl Mob {
         self.server_data.smart
     }
 
-    pub fn update_with_temp_action(&mut self, tmp_action: Action, delta_time: f64) {
+    pub fn update_with_temp_action(&mut self, tmp_action: &Action, delta_time: f64) {
         if tmp_action.is_empty() {
             return;
         }
@@ -431,13 +433,17 @@ impl Mob {
             return;
         }
 
-        let map_pos = self.position().to_map_position(world);
-        if let Some(CellType::Wall) = world.get_cell(map_pos) {
-            // Oops - we're in a wall. Reposition to nearby blank space.
-            let blank = world.find_nearest_blank(map_pos);
-            self.set_position(PixelPositionF64::from_map_position(blank, world));
+        let step_count = (delta_time / MAX_MOVEMENT_STEP_SECONDS).ceil().max(1.0) as usize;
+        let step_delta = delta_time / step_count as f64;
+        for _ in 0..step_count {
+            self.ensure_valid_position(world);
+            self.update_movement_step(step_delta, players, world);
+            self.ensure_valid_position(world);
         }
+    }
 
+    fn update_movement_step(&mut self, delta_time: f64, players: &PlayerList, world: &World) {
+        let map_pos = self.position().to_map_position(world);
         // If we're in danger, do something about it.
         if self.server_data.danger {
             // We were in danger. Are we still in danger ?
@@ -509,7 +515,56 @@ impl Mob {
             }
         }
 
-        self.update_with_temp_action(tmp_action, delta_time);
+        self.update_with_temp_action(&tmp_action, delta_time);
+        self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
+    }
+
+    fn ensure_valid_position(&mut self, world: &World) {
+        let map_pos = self.position().to_map_position(world);
+        if self.is_collision_blocked_cell(world.get_cell(map_pos)) {
+            let blank = world.find_nearest_blank(map_pos);
+            self.set_position(PixelPositionF64::from_map_position(blank, world));
+        }
+    }
+
+    fn is_collision_blocked_cell(&self, cell: Option<CellType>) -> bool {
+        matches!(
+            cell,
+            Some(CellType::Wall) | Some(CellType::Mystery) | Some(CellType::Bomb) | None
+        )
+    }
+
+    fn fix_position_and_tmpaction(
+        &mut self,
+        tmp_action: &mut Action,
+        map_pos: MapPosition,
+        world: &World,
+    ) {
+        if tmp_action.x() != 0 {
+            let try_pos = map_pos + PositionOffset::new(tmp_action.x(), 0);
+            if !self.can_pass(try_pos, world) {
+                let target_x = PixelPositionF64::from_map_position(map_pos, world).x;
+                if (tmp_action.x() < 0 && self.position.x <= target_x)
+                    || (tmp_action.x() > 0 && self.position.x >= target_x)
+                {
+                    self.position.x = target_x;
+                    tmp_action.setxy(0, tmp_action.y());
+                }
+            }
+        }
+
+        if tmp_action.y() != 0 {
+            let try_pos = map_pos + PositionOffset::new(0, tmp_action.y());
+            if !self.can_pass(try_pos, world) {
+                let target_y = PixelPositionF64::from_map_position(map_pos, world).y;
+                if (tmp_action.y() < 0 && self.position.y <= target_y)
+                    || (tmp_action.y() > 0 && self.position.y >= target_y)
+                {
+                    self.position.y = target_y;
+                    tmp_action.setxy(tmp_action.x(), 0);
+                }
+            }
+        }
     }
 }
 
@@ -532,5 +587,65 @@ impl CanPass for Mob {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        engine::{bomb::Bomb, config::GameConfig, player::{Player, PlayerId}, types::BombList, world::World},
+        comms::playercomm::PlayerComm,
+    };
+    use tokio::sync::mpsc;
+
+    fn test_player() -> Player {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(PlayerId::from(1), PlayerComm::new(PlayerId::from(1), tx, rx));
+        player.set_name("test");
+        player
+    }
+
+    #[test]
+    fn mob_does_not_tunnel_through_bombs_on_large_delta() {
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+        let mut bombs = BombList::new();
+        let player = test_player();
+        let players = PlayerList::new();
+        let mut mob = Mob::new();
+
+        mob.set_position(PixelPositionF64::new(112.0, 48.0));
+        mob.action.set(1, 0, false);
+        mob.server_data.target_remaining = 999.0;
+        mob.server_data.target_mode = MobTargetMode::Clockwise;
+        mob.server_data.target_dir = MobTargetDir::Right;
+        mob.server_data.old_position = MapPosition::new(3, 1);
+
+        world.add_bomb(Bomb::new(&player, MapPosition::new(5, 1), false), &mut bombs);
+
+        mob.update(0.8, &players, &world);
+
+        let final_pos = mob.position().to_map_position(&world);
+        assert_ne!(final_pos, MapPosition::new(5, 1));
+        assert!(final_pos.x <= 4 || final_pos.y != 1);
+    }
+
+    #[test]
+    fn mob_repositions_out_of_bomb_tiles() {
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+        let mut bombs = BombList::new();
+        let player = test_player();
+        let players = PlayerList::new();
+        let mut mob = Mob::new();
+
+        mob.set_position(PixelPositionF64::new(112.0, 48.0));
+        world.add_bomb(Bomb::new(&player, MapPosition::new(3, 1), false), &mut bombs);
+
+        mob.update(0.0, &players, &world);
+
+        assert_ne!(mob.position().to_map_position(&world), MapPosition::new(3, 1));
     }
 }

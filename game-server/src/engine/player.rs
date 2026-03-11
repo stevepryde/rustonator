@@ -25,6 +25,7 @@ use tracing::{error, info};
 
 const MAX_SCORE_MULTIPLIER: u32 = 4;
 const KILL_STREAK_WINDOW_SECONDS: f64 = 12.0;
+const MAX_MOVEMENT_STEP_SECONDS: f64 = 0.05;
 
 #[derive(Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -609,13 +610,17 @@ impl Player {
             return;
         }
 
-        let map_pos = self.position().to_map_position(world);
-        if let Some(CellType::Wall) = world.get_cell(map_pos) {
-            // Oops - we're in a wall. Reposition to nearby blank space.
-            let blank = world.find_nearest_blank(map_pos);
-            self.set_position(PixelPositionF64::from_map_position(blank, world));
+        let step_count = (delta_time / MAX_MOVEMENT_STEP_SECONDS).ceil().max(1.0) as usize;
+        let step_delta = delta_time / step_count as f64;
+        for _ in 0..step_count {
+            self.ensure_valid_position(world);
+            self.update_movement_step(world, step_delta);
+            self.ensure_valid_position(world);
         }
+    }
 
+    fn update_movement_step(&mut self, world: &World, delta_time: f64) {
+        let map_pos = self.position().to_map_position(world);
         let mut tmp_action = self.action().clone();
         self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
 
@@ -673,6 +678,22 @@ impl Player {
         self.fix_position_and_tmpaction(&mut tmp_action, map_pos, world);
     }
 
+    fn ensure_valid_position(&mut self, world: &World) {
+        let map_pos = self.position().to_map_position(world);
+        if self.is_collision_blocked_cell(world.get_cell(map_pos)) {
+            let blank = world.find_nearest_blank(map_pos);
+            self.set_position(PixelPositionF64::from_map_position(blank, world));
+        }
+    }
+
+    fn is_collision_blocked_cell(&self, cell: Option<CellType>) -> bool {
+        match cell {
+            Some(CellType::Wall) | Some(CellType::Mystery) | None => true,
+            Some(CellType::Bomb) => false,
+            _ => false,
+        }
+    }
+
     fn fix_position_and_tmpaction(
         &mut self,
         tmp_action: &mut Action,
@@ -727,4 +748,49 @@ static SANITISE_RE: LazyLock<Regex> =
 fn sanitise_name(name: &str) -> String {
     let cleaned: String = SANITISE_RE.replace_all(name, "").chars().take(30).collect();
     cleaned.censor()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        comms::playercomm::PlayerComm,
+        engine::{config::GameConfig, world::World},
+    };
+    use tokio::sync::mpsc;
+
+    fn test_player() -> Player {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(PlayerId::from(1), PlayerComm::new(PlayerId::from(1), tx, rx));
+        player.set_name("test");
+        player.set_position(PixelPositionF64::new(112.0, 48.0));
+        player
+    }
+
+    #[test]
+    fn player_does_not_tunnel_through_mystery_blocks_on_large_delta() {
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+        let mut player = test_player();
+
+        world.set_cell(MapPosition::new(5, 1), CellType::Mystery);
+        player.action_mut().set(1, 0, false);
+
+        player.update(&world, 0.8);
+
+        assert_eq!(player.position().to_map_position(&world), MapPosition::new(4, 1));
+    }
+
+    #[test]
+    fn player_repositions_out_of_mystery_tiles() {
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+        let mut player = test_player();
+
+        world.set_cell(MapPosition::new(3, 1), CellType::Mystery);
+        player.update(&world, 0.0);
+
+        assert_ne!(player.position().to_map_position(&world), MapPosition::new(3, 1));
+    }
 }
