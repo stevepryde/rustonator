@@ -74,7 +74,7 @@ impl RustonatorGame {
         mut player_join_rx: Receiver<PlayerConnectEvent>,
     ) -> ZResult<()>
     {
-        let block_regen_interval = Duration::from_secs(3);
+        let block_regen_interval = Duration::from_secs(6);
 
         // Limit max FPS.
         let fps = 30.0;
