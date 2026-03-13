@@ -4,7 +4,7 @@ import { DetonatorGameOnline } from "../js/lib/gameonline";
 import type { DetonatorGame } from "../js/lib/game";
 import type { PlayerData } from "../js/lib/common/player";
 
-export type Screen = "menu" | "loading" | "game" | "postGame";
+export type Screen = "menu" | "scores" | "loading" | "game" | "postGame";
 
 export interface GameState {
   screen: Screen;
@@ -98,11 +98,21 @@ export function useGameState() {
     setState((s) => ({ ...s, character }));
   }, []);
 
+  const showScores = useCallback(() => {
+    setState((s) => ({ ...s, screen: "scores" }));
+  }, []);
+
+  const showMenu = useCallback(() => {
+    setState((s) => ({ ...s, screen: "menu" }));
+  }, []);
+
   return {
     ...state,
     gameContainerRef,
     setPlayerName,
     setCharacter,
+    showScores,
+    showMenu,
     startGame: launchGame,
     respawn: launchGame,
   };

@@ -218,6 +218,15 @@ impl Bomb {
     pub fn terminate(&mut self) {
         self.active = false;
     }
+
+    pub fn convert_to_timed(&mut self) {
+        if !self.remote {
+            return;
+        }
+
+        self.remote = false;
+        self.timestamp = Timestamp::new() + self.remaining;
+    }
 }
 
 impl HasId<BombId> for Bomb {
@@ -259,5 +268,20 @@ mod tests {
 
         assert!(!bomb.tick(30.0));
         assert!(bomb.is_active());
+    }
+
+    #[test]
+    fn remote_bombs_can_be_converted_back_to_timed_bombs() {
+        let player = test_player();
+        let mut bomb = Bomb::new(&player, MapPosition::new(1, 1), true);
+
+        bomb.convert_to_timed();
+
+        assert!(!bomb.is_remote());
+        assert!(!bomb.timestamp().is_zero());
+        assert!(!bomb.tick(2.0));
+        assert!(bomb.is_active());
+        assert!(bomb.tick(1.1));
+        assert!(!bomb.is_active());
     }
 }

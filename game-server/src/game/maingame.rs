@@ -209,6 +209,7 @@ impl RustonatorGame {
             }
             PlayerConnectEvent::Disconnected(pid) => {
                 info!("Player {:?} disconnected", pid);
+                self.convert_remote_bombs_for_player(pid);
                 if let Some(player) = self.players.get(&pid) {
                     self.submit_score(player);
                 }
@@ -232,6 +233,7 @@ impl RustonatorGame {
         }
 
         for q in quit {
+            self.convert_remote_bombs_for_player(q);
             if let Some(player) = self.players.get(&q) {
                 self.submit_score(player);
             }
@@ -308,6 +310,27 @@ impl RustonatorGame {
         }
 
         false
+    }
+
+    fn convert_remote_bombs_for_player(&mut self, player_id: PlayerId) {
+        let remote_bomb_ids: Vec<_> = self
+            .bombs
+            .iter()
+            .filter(|bomb| bomb.pid() == player_id && bomb.is_remote() && bomb.is_active())
+            .map(|bomb| bomb.id())
+            .collect();
+
+        for bomb_id in remote_bomb_ids {
+            let mut converted = false;
+            if let Some(bomb) = self.bombs.get_mut(bomb_id) {
+                bomb.convert_to_timed();
+                converted = true;
+            }
+
+            if converted {
+                self.world.update_bomb_path(bomb_id, &self.bombs);
+            }
+        }
     }
 
     /// Spawn mob at a random mob spawner, and assign it a new target.
@@ -516,6 +539,7 @@ impl RustonatorGame {
                 reason
             );
             player.terminate();
+            self.convert_remote_bombs_for_player(player.id());
             player.ws().send(PlayerMessage::Dead(reason)).await?;
 
             self.submit_score(player);
@@ -524,12 +548,10 @@ impl RustonatorGame {
         Ok(())
     }
 
-    async fn send_data_to_player(&self, player: &mut Player) -> ZResult<()> {
-        let map_pos = player.position().to_map_position(&self.world);
+    fn local_players_for_map_pos(&self, map_pos: MapPosition) -> Vec<&Player> {
         let chunkwidth = self.world.sizes().chunk_size().width;
         let chunkheight = self.world.sizes().chunk_size().height;
-        let local_players: Vec<&Player> = self
-            .players
+        self.players
             .values()
             .filter(|p| {
                 p.position().to_map_position(&self.world).is_within_grid(
@@ -538,7 +560,30 @@ impl RustonatorGame {
                     chunkheight,
                 )
             })
-            .collect();
+            .collect()
+    }
+
+    fn leaderboard_players(&self) -> Vec<&Player> {
+        self.players
+            .values()
+            .filter(|p| p.has_joined() && !p.is_dead())
+            .collect()
+    }
+
+    fn leaderboard_players_for<'a>(&'a self, player: &'a Player) -> Vec<&'a Player> {
+        let mut leaderboard_players = self.leaderboard_players();
+        if player.has_joined() && !player.is_dead() {
+            leaderboard_players.push(player);
+        }
+        leaderboard_players
+    }
+
+    async fn send_data_to_player(&self, player: &mut Player) -> ZResult<()> {
+        let map_pos = player.position().to_map_position(&self.world);
+        let chunkwidth = self.world.sizes().chunk_size().width;
+        let chunkheight = self.world.sizes().chunk_size().height;
+        let local_players = self.local_players_for_map_pos(map_pos);
+        let leaderboard_players = self.leaderboard_players_for(player);
 
         let local_mobs: Vec<&Mob> = self
             .mobs
@@ -574,6 +619,7 @@ impl RustonatorGame {
             "player": player,
             "world": self.world.get_chunk_data(map_pos),
             "players": local_players,
+            "leaderboardPlayers": leaderboard_players,
             "mobs": local_mobs,
             "bombs": local_bombs,
             "explosions": local_explosions
@@ -608,8 +654,14 @@ impl RustonatorGame {
 }
 
 #[cfg(test)]
+mod test_harness;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use self::test_harness::{Direction, ScenarioHarness};
+    use crate::{comms::playercomm::PlayerComm, engine::position::PixelPositionF64};
+    use tokio::sync::mpsc;
 
     fn count_mystery_blocks(game: &RustonatorGame) -> usize {
         let map_size = game.world.sizes().map_size();
@@ -637,6 +689,17 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn test_player(id: u64) -> Player {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(
+            PlayerId::from(id),
+            PlayerComm::new(PlayerId::from(id), tx, rx),
+        );
+        player.set_name("test");
+        player
     }
 
     #[test]
@@ -678,5 +741,349 @@ mod tests {
 
         assert!(small.max_mobs() < 40);
         assert!(large.max_mobs() > 40);
+    }
+
+    #[test]
+    fn player_death_converts_remote_bombs_into_timed_bombs() {
+        let mut game = RustonatorGame::new(47, 47);
+        clear_mystery_blocks(&mut game);
+
+        let bomb_pos = MapPosition::new(1, 1);
+        game.world.set_cell(bomb_pos, CellType::Empty);
+
+        let mut player = test_player(1);
+        player.set_position(PixelPositionF64::from_map_position(bomb_pos, &game.world));
+        player.grant_remote_bomb_charges(1);
+        game.create_bomb_for_player(&mut player);
+
+        assert_eq!(game.bombs.len(), 1);
+        let bomb_id = game.bombs.iter().next().unwrap().id();
+        assert!(game.bombs.get(bomb_id).unwrap().is_remote());
+
+        game.convert_remote_bombs_for_player(player.id());
+
+        let bomb = game.bombs.get(bomb_id).unwrap();
+        assert!(!bomb.is_remote());
+        assert!(!bomb.timestamp().is_zero());
+    }
+
+    #[test]
+    fn disconnect_event_converts_remote_bombs_before_removing_player() {
+        let mut game = RustonatorGame::new(47, 47);
+        clear_mystery_blocks(&mut game);
+
+        let bomb_pos = MapPosition::new(1, 1);
+        game.world.set_cell(bomb_pos, CellType::Empty);
+
+        let mut player = test_player(7);
+        player.set_position(PixelPositionF64::from_map_position(bomb_pos, &game.world));
+        player.grant_remote_bomb_charges(1);
+        let player_id = player.id();
+
+        game.create_bomb_for_player(&mut player);
+        game.players.insert(player_id, player);
+
+        let bomb_id = game.bombs.iter().next().unwrap().id();
+        assert!(game.bombs.get(bomb_id).unwrap().is_remote());
+
+        game.handle_connect_event(PlayerConnectEvent::Disconnected(player_id));
+
+        let bomb = game.bombs.get(bomb_id).unwrap();
+        assert!(!bomb.is_remote());
+        assert!(!bomb.timestamp().is_zero());
+        assert!(!game.players.contains_key(&player_id));
+    }
+
+    #[tokio::test]
+    async fn input_disconnect_converts_remote_bombs_before_removing_player() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let player_id = harness.add_joined_player_at(9, MapPosition::new(1, 1), "carol").await;
+        harness.grant_remote_bomb_charges(player_id, 1);
+
+        harness.queue_fire(player_id);
+        harness.tick_default().await;
+        assert_eq!(harness.snapshot().bombs.len(), 1);
+        assert!(harness.snapshot().bombs[0].remote);
+
+        harness.drop_input(player_id);
+        harness.tick_default().await;
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.players.is_empty());
+        assert_eq!(snapshot.bombs.len(), 1);
+        assert!(!snapshot.bombs[0].remote);
+    }
+
+    #[tokio::test]
+    async fn scenario_timed_bomb_explodes_and_restores_player_bomb_capacity() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let player_id = harness.add_joined_player_at(1, MapPosition::new(1, 1), "alice").await;
+
+        harness.queue_fire(player_id);
+        harness.tick_default().await;
+
+        let snapshot = harness.snapshot();
+        assert_eq!(snapshot.bombs.len(), 1);
+        assert!(!snapshot.bombs[0].remote);
+        assert_eq!(harness.player_cur_bombs(player_id), Some(1));
+
+        harness.tick_for_seconds(3.2).await;
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.bombs.is_empty());
+        assert_eq!(harness.player_cur_bombs(player_id), Some(0));
+        assert!(matches!(
+            harness.cell(MapPosition::new(1, 1)),
+            Some(CellType::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn scenario_remote_bomb_reverts_and_then_explodes_after_disconnect() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let player_id = harness.add_joined_player_at(7, MapPosition::new(1, 1), "bob").await;
+        harness.grant_remote_bomb_charges(player_id, 1);
+
+        harness.queue_fire(player_id);
+        harness.tick_default().await;
+
+        let snapshot = harness.snapshot();
+        assert_eq!(snapshot.bombs.len(), 1);
+        assert!(snapshot.bombs[0].remote);
+
+        harness.disconnect_event(player_id);
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.players.is_empty());
+        assert_eq!(snapshot.bombs.len(), 1);
+        assert!(!snapshot.bombs[0].remote);
+
+        harness.tick_for_seconds(3.2).await;
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.bombs.is_empty());
+        assert!(matches!(
+            harness.cell(MapPosition::new(1, 1)),
+            Some(CellType::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn leaderboard_keeps_far_away_players_even_when_not_locally_visible() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let player_one = harness
+            .add_joined_player_at(1, MapPosition::new(1, 1), "alice")
+            .await;
+        let _player_two = harness
+            .add_joined_player_at(2, MapPosition::new(41, 41), "bob")
+            .await;
+
+        assert_eq!(harness.leaderboard_player_count(), 2);
+        assert_eq!(harness.visible_player_count_for(player_one), 1);
+    }
+
+    #[tokio::test]
+    async fn frame_payload_leaderboard_includes_current_player_even_when_alone() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let player = harness
+            .add_joined_player_at(1, MapPosition::new(1, 1), "alice")
+            .await;
+
+        let frame = harness
+            .last_frame_data(player)
+            .expect("expected a frame payload for the joined player");
+        let leaderboard = frame["leaderboardPlayers"]
+            .as_array()
+            .expect("leaderboardPlayers should be an array");
+
+        assert_eq!(leaderboard.len(), 1);
+        assert_eq!(leaderboard[0]["name"].as_str(), Some("alice"));
+    }
+
+    #[tokio::test]
+    async fn scenario_later_bomb_is_triggered_early_by_chain_reaction() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let player_one = harness
+            .add_joined_player_at(1, MapPosition::new(3, 3), "alice")
+            .await;
+        let player_two = harness
+            .add_joined_player_at(2, MapPosition::new(4, 3), "bob")
+            .await;
+
+        harness.queue_fire(player_one);
+        harness.tick_default().await;
+        assert_eq!(harness.snapshot().bombs.len(), 1);
+
+        harness.tick_for_seconds(1.0).await;
+
+        harness.queue_fire(player_two);
+        harness.tick_default().await;
+        assert_eq!(harness.snapshot().bombs.len(), 2);
+
+        harness.tick_for_seconds(2.2).await;
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.bombs.is_empty());
+        assert_eq!(harness.player_cur_bombs(player_one), Some(0));
+        assert_eq!(harness.player_cur_bombs(player_two), Some(0));
+    }
+
+    #[tokio::test]
+    async fn scenario_enemy_bomb_kill_awards_score_and_multiplier() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let killer = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+        let victim = harness
+            .add_joined_player_at(2, MapPosition::new(6, 3), "bob")
+            .await;
+
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_action(killer, -1, 0, true, false);
+        harness.tick_default().await;
+        harness.move_for_ticks(killer, Direction::Left, 10).await;
+        harness.tick_for_seconds(2.8).await;
+
+        assert_eq!(harness.player_score(killer), Some(2000));
+        assert_eq!(harness.player_score_multiplier(killer), Some(2));
+        assert_eq!(harness.player_is_active(killer), Some(true));
+        assert_eq!(harness.player_is_active(victim), Some(false));
+        assert_eq!(harness.last_dead_reason(victim), Some("You were killed by 'alice'"));
+    }
+
+    #[tokio::test]
+    async fn scenario_self_bomb_kill_reports_own_bomb_reason_without_score_gain() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let player = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_fire(player);
+        harness.tick_default().await;
+        harness.tick_for_seconds(3.2).await;
+
+        assert_eq!(harness.player_score(player), Some(0));
+        assert_eq!(harness.player_is_active(player), Some(false));
+        assert_eq!(
+            harness.last_dead_reason(player),
+            Some("Oops! You were killed by your own bomb")
+        );
+    }
+
+    #[tokio::test]
+    async fn scenario_block_regen_does_not_spawn_on_players_or_bombs() {
+        let mut harness = ScenarioHarness::new_empty_arena(47, 47);
+        let _player = harness
+            .add_joined_player_at(1, MapPosition::new(11, 11), "alice")
+            .await;
+        let bomber = harness
+            .add_joined_player_at(2, MapPosition::new(21, 21), "bob")
+            .await;
+
+        harness.queue_fire(bomber);
+        harness.tick_default().await;
+
+        let player_pos = MapPosition::new(11, 11);
+        let bomb_pos = harness.snapshot().bombs[0].position;
+
+        for _ in 0..10 {
+            harness.force_block_regen();
+            assert!(matches!(harness.cell(player_pos), Some(CellType::Empty)));
+            assert!(matches!(harness.cell(bomb_pos), Some(CellType::Bomb)));
+        }
+    }
+
+    #[tokio::test]
+    async fn scenario_reverted_remote_bomb_chain_reacts_from_shorter_timed_bomb() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let remote_owner = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+        let timed_owner = harness
+            .add_joined_player_at(2, MapPosition::new(6, 3), "bob")
+            .await;
+
+        harness.grant_remote_bomb_charges(remote_owner, 1);
+        harness.decrease_bomb_time(timed_owner, 1);
+
+        harness.queue_fire(remote_owner);
+        harness.tick_default().await;
+        harness.disconnect_event(remote_owner);
+
+        harness.queue_fire(timed_owner);
+        harness.tick_default().await;
+
+        let snapshot = harness.snapshot();
+        assert_eq!(snapshot.bombs.len(), 2);
+        assert_eq!(harness.player_cur_bombs(timed_owner), Some(1));
+
+        harness.tick_for_seconds(2.3).await;
+
+        let snapshot = harness.snapshot();
+        assert!(snapshot.bombs.is_empty());
+        assert_eq!(harness.player_cur_bombs(timed_owner), Some(0));
+    }
+
+    #[tokio::test]
+    async fn chained_bomb_does_not_blast_through_block_destroyed_in_same_tick() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let bomber_one = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+        let bomber_two = harness
+            .add_joined_player_at(2, MapPosition::new(6, 3), "bob")
+            .await;
+        let victim = harness
+            .add_joined_player_at(3, MapPosition::new(8, 3), "charlie")
+            .await;
+
+        harness.increase_range(bomber_one, 1);
+        harness.increase_range(bomber_two, 1);
+        harness.set_mystery(MapPosition::new(7, 3));
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_fire(bomber_one);
+        harness.tick_default().await;
+        harness.queue_fire(bomber_two);
+        harness.tick_default().await;
+
+        harness.tick_for_seconds(3.2).await;
+
+        assert_eq!(harness.player_is_active(victim), Some(true));
+        assert!(!matches!(harness.cell(MapPosition::new(7, 3)), Some(CellType::Mystery)));
+    }
+
+    #[tokio::test]
+    async fn player_can_move_into_block_tile_after_explosion_tick_has_passed() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let bomber = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+        let runner = harness
+            .add_joined_player_at(2, MapPosition::new(7, 3), "bob")
+            .await;
+
+        harness.set_mystery(MapPosition::new(6, 3));
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_fire(bomber);
+        harness.tick_default().await;
+        harness.tick_for_seconds(3.2).await;
+
+        harness.move_for_ticks(runner, Direction::Left, 6).await;
+
+        assert_eq!(harness.player_is_active(runner), Some(true));
+        assert_eq!(
+            harness
+                .snapshot()
+                .players
+                .iter()
+                .find(|player| player.id == runner)
+                .map(|player| player.position),
+            Some(MapPosition::new(6, 3))
+        );
     }
 }

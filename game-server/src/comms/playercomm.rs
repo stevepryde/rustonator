@@ -71,6 +71,11 @@ impl PlayerMessageExternal {
     pub fn is_disconnect(&self) -> bool {
         matches!(self.data, PlayerMessage::Disconnect)
     }
+
+    #[cfg(test)]
+    pub fn message(&self) -> &PlayerMessage {
+        &self.data
+    }
 }
 
 #[derive(Debug)]

@@ -71,11 +71,8 @@ impl Explosion {
     }
 
     pub fn update(&mut self, delta_time: f64) {
+        self.harmful = false;
         self.remaining -= delta_time;
-        if self.remaining <= 0.3 {
-            self.harmful = false;
-        }
-
         if self.remaining <= 0.0 {
             self.remaining = 0.0;
             self.active = false;
@@ -98,7 +95,7 @@ impl From<MapPosition> for Explosion {
             active: true,
             position,
             remaining: 0.5,
-            harmful: true,
+            harmful: false,
             timestamp: Timestamp::new(),
         }
     }
@@ -116,5 +113,37 @@ impl From<(Bomb, MapPosition)> for Explosion {
             harmful: true,
             timestamp: Timestamp::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        comms::playercomm::PlayerComm,
+        engine::{player::{Player, PlayerId}, position::MapPosition},
+    };
+    use tokio::sync::mpsc;
+
+    fn test_bomb_explosion() -> Explosion {
+        let (tx, _rx_external) = mpsc::channel(1);
+        let (_tx_external, rx) = mpsc::channel(1);
+        let mut player = Player::new(PlayerId::from(1), PlayerComm::new(PlayerId::from(1), tx, rx));
+        player.set_name("test");
+        let bomb = Bomb::new(&player, MapPosition::new(1, 1), false);
+        Explosion::from((bomb, MapPosition::new(1, 1)))
+    }
+
+    #[test]
+    fn bomb_explosions_are_only_harmful_for_the_spawn_tick() {
+        let mut explosion = test_bomb_explosion();
+
+        assert!(explosion.is_harmful());
+        assert!(explosion.is_active());
+
+        explosion.update(1.0 / 30.0);
+
+        assert!(!explosion.is_harmful());
+        assert!(explosion.is_active());
     }
 }

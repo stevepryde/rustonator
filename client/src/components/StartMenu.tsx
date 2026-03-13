@@ -17,6 +17,7 @@ interface StartMenuProps {
   character: string;
   onNameChange: (name: string) => void;
   onCharacterChange: (character: string) => void;
+  onShowScores: () => void;
   onStart: () => void;
 }
 
@@ -25,6 +26,7 @@ export default function StartMenu({
   character,
   onNameChange,
   onCharacterChange,
+  onShowScores,
   onStart,
 }: StartMenuProps) {
   const { scores } = useScores();
@@ -96,6 +98,14 @@ export default function StartMenu({
           PLAY
         </button>
 
+        <button
+          type="button"
+          onClick={onShowScores}
+          className="btn-solid w-full max-w-[400px] mt-2.5 font-bold lg:hidden"
+        >
+          SCORES
+        </button>
+
         {/* Desktop-only controls info */}
         <div className="hidden md:block mt-6">
           <b>Desktop Controls</b>
@@ -103,6 +113,8 @@ export default function StartMenu({
           <b>Move</b> - Arrow keys
           <br />
           <b>Bomb</b> - Space bar
+          <br />
+          <b>Controller</b> - Left stick / D-pad, A
           <br />
           <br />
           <a href="/glossary.html">Power-up item reference</a>

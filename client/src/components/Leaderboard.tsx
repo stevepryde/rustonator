@@ -10,8 +10,8 @@ interface LeaderboardProps {
 }
 
 export default function Leaderboard({ players, currentPlayerId }: LeaderboardProps) {
-  const sorted = players
-    .filter((p) => p.active && p.name)
+  const sorted = [...players]
+    .filter((p) => p.name)
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
 

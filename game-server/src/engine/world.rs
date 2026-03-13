@@ -70,6 +70,45 @@ pub struct World {
     zones: WorldZoneData,
 }
 
+struct ExplosionCellSnapshot {
+    width: i32,
+    height: i32,
+    cells: Vec<CellType>,
+}
+
+impl ExplosionCellSnapshot {
+    fn capture(world: &World) -> Self {
+        let map_size = world.sizes().map_size();
+        let mut cells = Vec::with_capacity((map_size.width * map_size.height) as usize);
+
+        for y in 0..map_size.height {
+            for x in 0..map_size.width {
+                let pos = MapPosition::new(x, y);
+                cells.push(
+                    world
+                        .get_cell(pos)
+                        .unwrap_or_else(|| panic!("world cell missing at {:?}", pos)),
+                );
+            }
+        }
+
+        Self {
+            width: map_size.width,
+            height: map_size.height,
+            cells,
+        }
+    }
+
+    fn get(&self, pos: MapPosition) -> Option<CellType> {
+        if pos.x < 0 || pos.x >= self.width || pos.y < 0 || pos.y >= self.height {
+            return None;
+        }
+
+        let index = ((pos.y * self.width) + pos.x) as usize;
+        self.cells.get(index).copied()
+    }
+}
+
 impl World {
     pub fn new(width: i32, height: i32, config: &GameConfig) -> Self {
         let mut world = World {
@@ -564,17 +603,22 @@ impl World {
         players: &mut PlayerList,
     ) -> Vec<crate::engine::player::PlayerId>
     {
+        let snapshot = ExplosionCellSnapshot::capture(self);
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
+        let mut seen_bombs: HashSet<BombId> = HashSet::new();
         let mut exploded_pids = Vec::new();
         bombs_to_explode.push_back(bomb_id);
+        seen_bombs.insert(bomb_id);
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
             if let Some(b) = bombs.get_mut(bomb_id) {
-                if let Some(CellType::Bomb) = self.get_cell(b.position()) {
-                    self.set_cell(b.position(), CellType::Empty);
-                    self.clear_internal_cell(b.position());
+                if !matches!(self.get_cell(b.position()), Some(CellType::Bomb)) {
+                    continue;
                 }
 
-                let bombs_cascade = self.explode_bomb_path(b, explosions);
+                self.set_cell(b.position(), CellType::Empty);
+                self.clear_internal_cell(b.position());
+
+                let bombs_cascade = self.explode_bomb_path(b, explosions, &snapshot);
                 // Update player bomb count.
                 if let Some(p) = players.get_mut(&b.pid()) {
                     p.bomb_exploded();
@@ -582,17 +626,22 @@ impl World {
                 exploded_pids.push(b.pid());
 
                 b.terminate();
-                bombs_to_explode.extend(bombs_cascade);
+                for cascade_id in bombs_cascade {
+                    if seen_bombs.insert(cascade_id) {
+                        bombs_to_explode.push_back(cascade_id);
+                    }
+                }
             }
         }
 
         exploded_pids
     }
 
-    pub fn explode_bomb_path(
+    fn explode_bomb_path(
         &mut self,
         bomb: &Bomb,
         explosions: &mut ExplosionList,
+        snapshot: &ExplosionCellSnapshot,
     ) -> Vec<BombId>
     {
         self.add_explosion(Explosion::from((bomb.clone(), bomb.position())), explosions);
@@ -609,7 +658,7 @@ impl World {
         {
             for dist in 1..=*bomb.range() {
                 let pos = bomb.position() + (offset * dist as i32);
-                match self.get_cell(pos) {
+                match snapshot.get(pos) {
                     // Explosions will in turn explode other bombs.
                     Some(CellType::Bomb) => {
                         if let Some(InternalCellData::Bomb(bomb_id)) =
@@ -636,23 +685,21 @@ impl World {
                     // The following will block an explosion, so stop.
                     Some(CellType::Mystery) => {
                         // This will become a powerup item.
-                        let r: f64 = rand::random();
-                        let item = if r > 0.9 {
-                            // 10% chance.
-                            CellType::ItemBomb
-                        } else if r > 0.8 {
-                            // 10% chance.
-                            CellType::ItemRange
-                        } else if r > 0.5 {
-                            // 30% chance.
-                            // Mystery item. Contents are determined at random when player picks
-                            // it up.
-                            CellType::ItemRandom
-                        } else {
-                            CellType::Empty
-                        };
                         self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
-                        self.set_cell(pos, item);
+                        if matches!(self.get_cell(pos), Some(CellType::Mystery)) {
+                            let r: f64 = rand::random();
+                            let item = if r > 0.9 {
+                                CellType::ItemBomb
+                            } else if r > 0.8 {
+                                CellType::ItemRange
+                            } else if r > 0.5 {
+                                // Mystery item. Contents are determined at random when player picks it up.
+                                CellType::ItemRandom
+                            } else {
+                                CellType::Empty
+                            };
+                            self.set_cell(pos, item);
+                        }
                         break;
                     }
                     Some(CellType::Wall) | None => break,

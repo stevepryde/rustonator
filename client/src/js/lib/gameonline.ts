@@ -91,7 +91,14 @@ export class DetonatorGameOnline extends DetonatorGame {
       }
       case "FRAMEDATA": {
         data.players.push(data.player);
-        this.updateVisiblePlayers(data.players, data.bombs, data.explosions, data.world, data.mobs);
+        this.updateVisiblePlayers(
+          data.players,
+          data.bombs,
+          data.explosions,
+          data.world,
+          data.mobs,
+          data.leaderboardPlayers
+        );
         break;
       }
       case "DEAD": {

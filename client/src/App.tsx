@@ -3,6 +3,7 @@ import StartMenu from "./components/StartMenu";
 import LoadingScreen from "./components/LoadingScreen";
 import GameArea from "./components/GameArea";
 import PostGameModal from "./components/PostGameModal";
+import ScoresPage from "./components/ScoresPage";
 
 export default function App() {
   const {
@@ -19,6 +20,8 @@ export default function App() {
     gameContainerRef,
     setPlayerName,
     setCharacter,
+    showScores,
+    showMenu,
     startGame,
     respawn,
   } = useGameState();
@@ -31,9 +34,11 @@ export default function App() {
           character={character}
           onNameChange={setPlayerName}
           onCharacterChange={setCharacter}
+          onShowScores={showScores}
           onStart={startGame}
         />
       )}
+      {screen === "scores" && <ScoresPage onBack={showMenu} />}
       {screen === "loading" && <LoadingScreen message={loadingMessage} />}
       {screen === "postGame" && (
         <PostGameModal

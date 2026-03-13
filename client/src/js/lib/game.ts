@@ -12,6 +12,10 @@ import { EffectType } from "./common/effect";
 import { PlayerFlags } from "./common/playerflags";
 import { formatTimedStatusSummary } from "../../lib/playerStatus";
 import { phaserAssets } from "../../assets/gameAssets";
+import { getTimedBombFrame } from "../../lib/bombVisuals";
+import { buildBombFrameState } from "../../lib/bombFrameState";
+import { resolveDirectionalAnimationKey } from "../../lib/spriteAnimations";
+import { getWorldTileFrame } from "../../lib/worldTiles";
 
 export const targetFPS = 30;
 
@@ -107,6 +111,12 @@ const INTERPOLATION = {
 
 const MAX_PREDICTION_STEP_SECONDS = 0.05;
 const FAST_CORRECTION_FOLLOW_RATE = 42;
+const GAMEPAD_DEADZONE = 0.35;
+interface BombVisualState {
+    remote: boolean;
+    observedRemaining: number;
+    observedAt: number;
+}
 
 export class DetonatorGame extends Phaser.Scene {
     playerName!: string;
@@ -172,6 +182,7 @@ export class DetonatorGame extends Phaser.Scene {
     knownMobs = new ObjectPool<Mob>();
     knownBombs = new ObjectPool<BombData>();
     knownExplosions = new ObjectPool<ExplosionData>();
+    bombVisualStates: { [x: string]: BombVisualState } = {};
     flickerToggle = false;
     flickerTimeout = 2;
     flickerCount = 0;
@@ -248,7 +259,8 @@ export class DetonatorGame extends Phaser.Scene {
             },
             input: {
                 keyboard: true,
-                touch: true
+                touch: true,
+                gamepad: true
             }
         };
 
@@ -330,6 +342,7 @@ export class DetonatorGame extends Phaser.Scene {
 
         this.knownBombs.clear();
         this.bombSprites = {};
+        this.bombVisualStates = {};
 
         this.knownExplosions.clear();
         this.explosionEmitters = {};
@@ -535,24 +548,23 @@ export class DetonatorGame extends Phaser.Scene {
             this.curAction.preferY = false;
             this.curAction.fire = false;
             this.curAction.deltaTime = 1.0 / targetFPS;
-            if (this.mykeys && this.altkeys) {
-                const rawDirectionState = this.getRawDirectionalState();
-                this.updateDirectionPriority(rawDirectionState);
-                const resolvedDirection = this.resolveDirectionState(this.getDirectionalState());
-                this.curAction.x = resolvedDirection.x;
-                this.curAction.y = resolvedDirection.y;
-                this.curAction.preferY = resolvedDirection.preferY;
-                if (this.mykeys.fire.isDown || this.altkeys.fire.isDown || this.touchActions["bomb"]) {
-                    if (!this.fireflag) {
-                        this.curAction.fire = true;
+            const rawDirectionState = this.getRawDirectionalState();
+            this.updateDirectionPriority(rawDirectionState);
+            const resolvedDirection = this.resolveDirectionState(this.getDirectionalState());
+            this.curAction.x = resolvedDirection.x;
+            this.curAction.y = resolvedDirection.y;
+            this.curAction.preferY = resolvedDirection.preferY;
 
-                        // Force separate presses each time.
-                        this.fireflag = true;
-                    }
-                } else {
-                    // not pressing fire.
-                    this.fireflag = false;
+            if (this.isFirePressed()) {
+                if (!this.fireflag) {
+                    this.curAction.fire = true;
+
+                    // Force separate presses each time.
+                    this.fireflag = true;
                 }
+            } else {
+                // not pressing fire.
+                this.fireflag = false;
             }
 
             // Only send command to server if we're still alive.
@@ -675,12 +687,70 @@ export class DetonatorGame extends Phaser.Scene {
     }
 
     getRawDirectionalState(): DirectionState {
+        const gamepadState = this.getGamepadDirectionalState();
+
         return {
-            up: !!(this.mykeys?.up.isDown || this.altkeys?.up.isDown || this.touchActions.up),
-            down: !!(this.mykeys?.down.isDown || this.altkeys?.down.isDown || this.touchActions.down),
-            left: !!(this.mykeys?.left.isDown || this.altkeys?.left.isDown || this.touchActions.left),
-            right: !!(this.mykeys?.right.isDown || this.altkeys?.right.isDown || this.touchActions.right)
+            up: !!(this.mykeys?.up.isDown || this.altkeys?.up.isDown || this.touchActions.up || gamepadState.up),
+            down: !!(this.mykeys?.down.isDown || this.altkeys?.down.isDown || this.touchActions.down || gamepadState.down),
+            left: !!(this.mykeys?.left.isDown || this.altkeys?.left.isDown || this.touchActions.left || gamepadState.left),
+            right: !!(this.mykeys?.right.isDown || this.altkeys?.right.isDown || this.touchActions.right || gamepadState.right)
         };
+    }
+
+    getActiveGamepad(): Phaser.Input.Gamepad.Gamepad | null {
+        const connectedPads = this.input.gamepad?.getAll() ?? [];
+        for (let i = 0; i < connectedPads.length; i++) {
+            if (connectedPads[i]?.connected) {
+                return connectedPads[i];
+            }
+        }
+
+        const fallbackPads = [
+            this.input.gamepad?.pad1,
+            this.input.gamepad?.pad2,
+            this.input.gamepad?.pad3,
+            this.input.gamepad?.pad4
+        ];
+        for (let i = 0; i < fallbackPads.length; i++) {
+            if (fallbackPads[i]?.connected) {
+                return fallbackPads[i];
+            }
+        }
+
+        return null;
+    }
+
+    getGamepadDirectionalState(): DirectionState {
+        const pad = this.getActiveGamepad();
+        if (!pad) {
+            return {
+                up: false,
+                down: false,
+                left: false,
+                right: false
+            };
+        }
+
+        const stickX = pad.leftStick.x;
+        const stickY = pad.leftStick.y;
+
+        return {
+            up: pad.up || stickY <= -GAMEPAD_DEADZONE,
+            down: pad.down || stickY >= GAMEPAD_DEADZONE,
+            left: pad.left || stickX <= -GAMEPAD_DEADZONE,
+            right: pad.right || stickX >= GAMEPAD_DEADZONE
+        };
+    }
+
+    isFirePressed(): boolean {
+        const pad = this.getActiveGamepad();
+
+        return !!(
+            this.mykeys?.fire.isDown ||
+            this.altkeys?.fire.isDown ||
+            this.touchActions["bomb"] ||
+            pad?.A
+        );
     }
 
     updateDirectionPriority(directionState: DirectionState): void {
@@ -976,6 +1046,7 @@ export class DetonatorGame extends Phaser.Scene {
             this.bombSprites[bid].destroy();
             delete this.bombSprites[bid];
         }
+        delete this.bombVisualStates[bid];
     }
 
     destroyExplosion(eid: string): void {
@@ -1074,7 +1145,7 @@ export class DetonatorGame extends Phaser.Scene {
             realIndex = my * this.world.width + tx;
 
             for (mx = tx; mx < tx + chunkwidth; mx++) {
-                val = mapdata[index++];
+                val = getWorldTileFrame(mapdata[index++]);
 
                 // Update local world data.
                 this.world.setcell(mx, my, val);
@@ -1160,7 +1231,8 @@ export class DetonatorGame extends Phaser.Scene {
         bombs: BombData[],
         explosions: ExplosionData[],
         worlddata: ChunkData,
-        mobs: MobData[]
+        mobs: MobData[],
+        leaderboardPlayers?: PlayerData[]
     ): void {
         let pid: string;
         let bid: string;
@@ -1335,20 +1407,15 @@ export class DetonatorGame extends Phaser.Scene {
         }
 
         // Update all visible bombs.
-        for (i = 0; i < bombs.length; i++) {
-            if (!bombs[i]) {
-                continue;
-            }
+        const bombFrameState = buildBombFrameState(bombs, Object.keys(this.bombSprites));
+        for (i = 0; i < bombFrameState.renderableBombs.length; i++) {
+            const bombData = bombFrameState.renderableBombs[i];
 
-            if (bombs[i].remaining <= 0 || !bombs[i].active) {
-                continue;
-            }
+            bid = bombData.id.toString();
+            this.knownBombs.set(bid, bombData);
 
-            bid = bombs[i].id.toString();
-            this.knownBombs.set(bid, bombs[i]);
-
-            let bx = bombs[i].x * this.world.tilewidth + halftilewidth;
-            let by = bombs[i].y * this.world.tileheight + halftileheight;
+            let bx = bombData.x * this.world.tilewidth + halftilewidth;
+            let by = bombData.y * this.world.tileheight + halftileheight;
 
             if (bid in this.bombSprites) {
                 this.setInterpolationTarget(
@@ -1364,34 +1431,10 @@ export class DetonatorGame extends Phaser.Scene {
                 if (this.bombGroup) {
                     this.bombGroup.add(bomb);
                 }
-
-                if (bombs[i].remote) {
-                    bomb.setFrame(3);
-                } else {
-                    let frames: number[] = [];
-                    let secsRemaining = Math.floor(bombs[i].remaining);
-                    if (secsRemaining > 4) {
-                        secsRemaining = 4;
-                    }
-
-                    for (let n = 4 - secsRemaining; n < 4; n++) {
-                        frames.push(n);
-                    }
-
-                    let animKey = "bomb_blow_" + bid;
-                    if (!this.anims.exists(animKey)) {
-                        this.anims.create({
-                            key: animKey,
-                            frames: this.anims.generateFrameNumbers("bombs", { frames: frames }),
-                            frameRate: 1,
-                            repeat: 0
-                        });
-                    }
-                    bomb.play(animKey);
-                }
                 bomb.setOrigin(0.5);
                 this.bombSprites[bid] = bomb;
                 this.setInterpolationTarget("bomb:" + bid, bomb, bx, by, INTERPOLATION.BOMB);
+                this.updateBombSpriteVisual(bid, bomb, bombData, this.time.now);
             }
         }
 
@@ -1465,10 +1508,6 @@ export class DetonatorGame extends Phaser.Scene {
 
         this.knownBombs.cleanUp((bid) => {
             this.destroyBombSprite(bid);
-            let animKey = "bomb_blow_" + bid;
-            if (this.anims.exists(animKey)) {
-                this.anims.remove(animKey);
-            }
         });
 
         this.knownExplosions.cleanUp((eid) => {
@@ -1491,7 +1530,7 @@ export class DetonatorGame extends Phaser.Scene {
             return true;
         });
 
-        this.updateLeaderboard(players);
+        this.updateLeaderboard(leaderboardPlayers ?? players);
         this.updateStatus();
     }
 
@@ -1866,17 +1905,40 @@ export class DetonatorGame extends Phaser.Scene {
             if (!sprite || !bomb) {
                 continue;
             }
-
-            if (bomb.remote) {
-                sprite.setFrame(3);
-                sprite.setTint(0xff7a5c);
-                const pulse = 1.06 + Math.sin(time / 120) * 0.08;
-                sprite.setScale(pulse);
-            } else {
-                sprite.clearTint();
-                sprite.setScale(1);
-            }
+            this.updateBombSpriteVisual(bid, sprite, bomb, time);
         }
+    }
+
+    updateBombSpriteVisual(
+        bid: string,
+        sprite: Phaser.GameObjects.Sprite,
+        bomb: BombData,
+        time: number
+    ): void {
+        const existingVisualState = this.bombVisualStates[bid];
+        if (!existingVisualState || existingVisualState.remote !== bomb.remote) {
+            this.bombVisualStates[bid] = {
+                remote: bomb.remote,
+                observedRemaining: bomb.remaining,
+                observedAt: time
+            };
+        }
+
+        if (bomb.remote) {
+            sprite.stop();
+            sprite.setFrame(3);
+            sprite.setTint(0xff7a5c);
+            const pulse = 1.06 + Math.sin(time / 120) * 0.08;
+            sprite.setScale(pulse);
+            return;
+        }
+
+        const visualState = this.bombVisualStates[bid];
+        const elapsedMs = Math.max(0, time - visualState.observedAt);
+        sprite.stop();
+        sprite.setFrame(getTimedBombFrame(visualState.observedRemaining, elapsedMs));
+        sprite.clearTint();
+        sprite.setScale(1);
     }
 
     syncPlayerNames(): void {
@@ -1939,11 +2001,11 @@ export class DetonatorGame extends Phaser.Scene {
             }
 
             if (anim && anim.length > 0) {
-                let animKey = imageKey + "_" + anim;
-                let curAnimKey = sprite.anims.currentAnim ? sprite.anims.currentAnim.key : null;
-                if (curAnimKey !== animKey || !sprite.anims.isPlaying) {
-                    sprite.play(animKey);
-                }
+                    let animKey = resolveDirectionalAnimationKey(imageKey, anim as "up" | "down" | "left" | "right");
+                    let curAnimKey = sprite.anims.currentAnim ? sprite.anims.currentAnim.key : null;
+                    if (curAnimKey !== animKey || !sprite.anims.isPlaying) {
+                        sprite.play(animKey);
+                    }
             }
         } else {
             sprite.anims.stop();
