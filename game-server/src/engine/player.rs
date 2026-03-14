@@ -766,15 +766,9 @@ mod tests {
     use crate::{
         comms::playercomm::{JoinGameData, PlayerComm, PlayerMessage, PlayerMessageExternal},
         engine::{config::GameConfig, world::World},
-    };
-    use std::{
-        fs,
-        path::PathBuf,
-        sync::{Mutex, OnceLock},
+        utils::maintenance::{MaintenanceState, set_test_override},
     };
     use tokio::sync::mpsc;
-
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn test_player() -> Player {
         let (tx, _rx_external) = mpsc::channel(1);
@@ -783,16 +777,6 @@ mod tests {
         player.set_name("test");
         player.set_position(PixelPositionF64::new(112.0, 48.0));
         player
-    }
-
-    fn maintenance_test_file(name: &str, enabled: bool) -> PathBuf {
-        let path = std::env::temp_dir().join(name);
-        let payload = serde_json::json!({
-            "enabled": enabled,
-            "message": "Maintenance mode",
-        });
-        fs::write(&path, payload.to_string()).expect("failed to write maintenance test file");
-        path
     }
 
     #[test]
@@ -823,14 +807,10 @@ mod tests {
 
     #[tokio::test]
     async fn handle_player_join_rejects_new_players_while_under_maintenance() {
-        let _guard = ENV_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("maintenance env lock poisoned");
-        let path = maintenance_test_file("rustonator-maintenance-join-test.json", true);
-        unsafe {
-            std::env::set_var("MAINTENANCE_FILE", &path);
-        }
+        set_test_override(Some(MaintenanceState {
+            enabled: true,
+            message: "Maintenance mode".to_string(),
+        }));
 
         let (server_tx, mut server_rx) = mpsc::channel(4);
         let (client_tx, client_rx) = mpsc::channel(4);
@@ -856,10 +836,7 @@ mod tests {
             .expect("join should not error");
 
         let outbound = server_rx.recv().await.expect("expected maintenance rejection");
-        fs::remove_file(&path).ok();
-        unsafe {
-            std::env::remove_var("MAINTENANCE_FILE");
-        }
+        set_test_override(None);
 
         assert!(!joined);
         assert!(matches!(

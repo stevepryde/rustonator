@@ -3,6 +3,7 @@ use crate::{
         bomb::{Bomb, BombId},
         config::GameConfig,
         explosion::Explosion,
+        player::PlayerId,
         position::{MapPosition, PositionOffset, SizeInPixels, SizeInTiles},
         types::{BombList, ExplosionList, PlayerList},
         worlddata::{
@@ -21,13 +22,26 @@ use crate::{
 use rand::prelude::*;
 use tracing::error;
 use serde::Serialize;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Serialize)]
 pub struct WorldSize {
     map_size: SizeInTiles,
     tile_size: SizeInPixels,
     chunk_size: SizeInTiles,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExplosionBlast {
+    pub position: MapPosition,
+    pub owner_id: PlayerId,
+    pub owner_name: String,
+}
+
+#[derive(Debug, Default)]
+pub struct BombExplosionResult {
+    pub exploded_pids: Vec<PlayerId>,
+    pub blasts: Vec<ExplosionBlast>,
 }
 
 impl WorldSize {
@@ -601,12 +615,13 @@ impl World {
         bombs: &mut BombList,
         explosions: &mut ExplosionList,
         players: &mut PlayerList,
-    ) -> Vec<crate::engine::player::PlayerId>
+    ) -> BombExplosionResult
     {
         let snapshot = ExplosionCellSnapshot::capture(self);
         let mut bombs_to_explode: VecDeque<BombId> = VecDeque::new();
         let mut seen_bombs: HashSet<BombId> = HashSet::new();
         let mut exploded_pids = Vec::new();
+        let mut blast_positions: HashMap<MapPosition, ExplosionBlast> = HashMap::new();
         bombs_to_explode.push_back(bomb_id);
         seen_bombs.insert(bomb_id);
         while let Some(bomb_id) = bombs_to_explode.pop_front() {
@@ -618,7 +633,8 @@ impl World {
                 self.set_cell(b.position(), CellType::Empty);
                 self.clear_internal_cell(b.position());
 
-                let bombs_cascade = self.explode_bomb_path(b, explosions, &snapshot);
+                let bombs_cascade =
+                    self.explode_bomb_path(b, explosions, &snapshot, &mut blast_positions);
                 // Update player bomb count.
                 if let Some(p) = players.get_mut(&b.pid()) {
                     p.bomb_exploded();
@@ -634,7 +650,10 @@ impl World {
             }
         }
 
-        exploded_pids
+        BombExplosionResult {
+            exploded_pids,
+            blasts: blast_positions.into_values().collect(),
+        }
     }
 
     fn explode_bomb_path(
@@ -642,9 +661,18 @@ impl World {
         bomb: &Bomb,
         explosions: &mut ExplosionList,
         snapshot: &ExplosionCellSnapshot,
+        blast_positions: &mut HashMap<MapPosition, ExplosionBlast>,
     ) -> Vec<BombId>
     {
         self.add_explosion(Explosion::from((bomb.clone(), bomb.position())), explosions);
+        blast_positions.insert(
+            bomb.position(),
+            ExplosionBlast {
+                position: bomb.position(),
+                owner_id: bomb.pid(),
+                owner_name: bomb.pname().to_string(),
+            },
+        );
 
         let mut bombs_cascade = Vec::new();
 
@@ -668,6 +696,14 @@ impl World {
                         } else {
                             // Can't find bomb? Might as well assume the cell is empty.
                             self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
+                            blast_positions.insert(
+                                pos,
+                                ExplosionBlast {
+                                    position: pos,
+                                    owner_id: bomb.pid(),
+                                    owner_name: bomb.pname().to_string(),
+                                },
+                            );
                         }
                         break;
                     }
@@ -676,16 +712,40 @@ impl World {
                     | Some(CellType::ItemRange)
                     | Some(CellType::ItemRandom) => {
                         self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
+                        blast_positions.insert(
+                            pos,
+                            ExplosionBlast {
+                                position: pos,
+                                owner_id: bomb.pid(),
+                                owner_name: bomb.pname().to_string(),
+                            },
+                        );
                         self.set_cell(pos, CellType::Empty);
                     }
                     Some(CellType::Empty) | Some(CellType::MobSpawner) => {
                         self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
+                        blast_positions.insert(
+                            pos,
+                            ExplosionBlast {
+                                position: pos,
+                                owner_id: bomb.pid(),
+                                owner_name: bomb.pname().to_string(),
+                            },
+                        );
                     }
 
                     // The following will block an explosion, so stop.
                     Some(CellType::Mystery) => {
                         // This will become a powerup item.
                         self.add_explosion(Explosion::from((bomb.clone(), pos)), explosions);
+                        blast_positions.insert(
+                            pos,
+                            ExplosionBlast {
+                                position: pos,
+                                owner_id: bomb.pid(),
+                                owner_name: bomb.pname().to_string(),
+                            },
+                        );
                         if matches!(self.get_cell(pos), Some(CellType::Mystery)) {
                             let r: f64 = rand::random();
                             let item = if r > 0.9 {

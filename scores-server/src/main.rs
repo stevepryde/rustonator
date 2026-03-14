@@ -8,7 +8,7 @@ use axum::{
 };
 use rustrict::CensorStr;
 use serde::{Deserialize, Serialize};
-use std::{fs, net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -24,6 +24,7 @@ struct SubmitScore {
 }
 
 const DEFAULT_MAINTENANCE_MESSAGE: &str = "Under maintenance. Please try again later.";
+const MAINTENANCE_ENABLED: bool = false;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct MaintenanceState {
@@ -48,15 +49,9 @@ impl Default for MaintenanceState {
 
 impl MaintenanceState {
     fn load_current() -> Self {
-        let path = std::env::var("MAINTENANCE_FILE")
-            .unwrap_or_else(|_| "maintenance.json".to_string());
-        Self::load_from_path(Path::new(&path))
-    }
-
-    fn load_from_path(path: &Path) -> Self {
-        match fs::read_to_string(path) {
-            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
-            Err(_) => Self::default(),
+        Self {
+            enabled: MAINTENANCE_ENABLED,
+            message: default_maintenance_message(),
         }
     }
 }
