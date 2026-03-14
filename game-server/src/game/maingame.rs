@@ -360,32 +360,65 @@ impl RustonatorGame {
     }
 
     pub fn game_process_mobs(&mut self, delta_time: f64) {
-        for mob in self.mobs.iter_mut() {
-            mob.update(delta_time, &self.players, &self.world);
+        let mob_ids: Vec<_> = self.mobs.iter().map(Mob::id).collect();
+        for mob_id in mob_ids {
+            if self.resolve_mob_explosion_hit(mob_id) {
+                continue;
+            }
 
-            // Check if mob is dead.
-            if let Some(InternalCellData::Explosion(explosion_id)) = self
-                .world
-                .get_internal_cell(mob.position().to_map_position(&self.world))
-                && let Some(explosion) = self.explosions.get(*explosion_id)
-                    && explosion.is_harmful() {
-                        mob.terminate();
+            if let Some(mob) = self.mobs.get_mut(mob_id) {
+                mob.update(delta_time, &self.players, &self.world);
+            }
 
-                        // Award points to the player that killed this mob.
-                        if let Some(p) = self.players.get_mut(&explosion.pid())
-                            && !p.is_dead() {
-                                p.increase_kill_streak();
-                                if mob.is_smart() {
-                                    p.increase_score(2000);
-                                } else {
-                                    p.increase_score(500);
-                                }
-                            }
-                    }
+            self.resolve_mob_explosion_hit(mob_id);
         }
 
         // Remove dead mobs.
         self.mobs.retain(|_, m| m.is_active());
+    }
+
+    fn resolve_mob_explosion_hit(&mut self, mob_id: crate::engine::mob::MobId) -> bool {
+        let Some((killer_id, smart)) = ({
+            let Some(mob) = self.mobs.get(mob_id) else {
+                return false;
+            };
+            let pos = mob.position().to_map_position(&self.world);
+            self.harmful_explosion_owner_at(pos).map(|killer_id| (killer_id, mob.is_smart()))
+        }) else {
+            return false;
+        };
+
+        if let Some(mob) = self.mobs.get_mut(mob_id) {
+            mob.terminate();
+        }
+
+        if let Some(p) = self.players.get_mut(&killer_id) && !p.is_dead() {
+            p.increase_kill_streak();
+            if smart {
+                p.increase_score(2000);
+            } else {
+                p.increase_score(500);
+            }
+        }
+
+        true
+    }
+
+    fn harmful_explosion_owner_at(
+        &self,
+        map_pos: MapPosition,
+    ) -> Option<crate::engine::player::PlayerId> {
+        let Some(InternalCellData::Explosion(explosion_id)) = self.world.get_internal_cell(map_pos)
+        else {
+            return None;
+        };
+
+        let explosion = self.explosions.get(*explosion_id)?;
+        if !explosion.is_harmful() {
+            return None;
+        }
+
+        Some(explosion.pid())
     }
 
     pub async fn game_process_players(&mut self, delta_time: f64) {
@@ -1085,5 +1118,24 @@ mod tests {
                 .map(|player| player.position),
             Some(MapPosition::new(6, 3))
         );
+    }
+
+    #[tokio::test]
+    async fn mob_standing_in_fresh_explosion_dies_before_it_can_move_away() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let bomber = harness
+            .add_joined_player_at(1, MapPosition::new(5, 3), "alice")
+            .await;
+
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_fire(bomber);
+        harness.tick_default().await;
+        harness.tick_for_seconds(2.9).await;
+        harness.add_mob_at(MapPosition::new(6, 3));
+        harness.tick_for_seconds(0.2).await;
+
+        assert_eq!(harness.mob_count(), 0);
+        assert!(harness.player_score(bomber).is_some_and(|score| score >= 500));
     }
 }

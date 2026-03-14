@@ -3,6 +3,7 @@ use crate::{
     comms::playercomm::{JoinGameData, PlayerComm, PlayerMessage, PlayerMessageExternal},
     component::action::Action,
     engine::{
+        mob::Mob,
         player::{Player, PlayerId},
         position::{MapPosition, PixelPositionF64},
         worlddata::InternalCellData,
@@ -156,6 +157,12 @@ impl ScenarioHarness {
                 player.increase_range();
             }
         }
+    }
+
+    pub fn add_mob_at(&mut self, position: MapPosition) {
+        let mut mob = Mob::new();
+        mob.set_position(PixelPositionF64::from_map_position(position, &self.game.world));
+        self.game.mobs.add(mob);
     }
 
     #[allow(dead_code)]
@@ -346,6 +353,10 @@ impl ScenarioHarness {
 
     pub fn cell(&self, position: MapPosition) -> Option<CellType> {
         self.game.world.get_cell(position)
+    }
+
+    pub fn mob_count(&self) -> usize {
+        self.game.mobs.len()
     }
 
     #[allow(dead_code)]

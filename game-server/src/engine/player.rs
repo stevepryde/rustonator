@@ -14,6 +14,7 @@ use crate::{
         celltypes::{CanPass, CellType},
         randenum::RandEnumFrom,
     },
+    utils::maintenance::MaintenanceState,
 };
 use rand::prelude::*;
 use regex::Regex;
@@ -452,6 +453,15 @@ impl Player {
                 Ok(true)
             }
             Ok(Some(PlayerMessage::JoinGame(join_data))) => {
+                let maintenance = MaintenanceState::load_current();
+                if maintenance.enabled {
+                    self.ws
+                        .send(PlayerMessage::Dead(maintenance.message))
+                        .await?;
+                    self.terminate();
+                    return Ok(false);
+                }
+
                 info!(
                     "Player {:?} is joining with name '{}' and character '{:?}'",
                     self.id(),
@@ -754,10 +764,17 @@ fn sanitise_name(name: &str) -> String {
 mod tests {
     use super::*;
     use crate::{
-        comms::playercomm::PlayerComm,
+        comms::playercomm::{JoinGameData, PlayerComm, PlayerMessage, PlayerMessageExternal},
         engine::{config::GameConfig, world::World},
     };
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{Mutex, OnceLock},
+    };
     use tokio::sync::mpsc;
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn test_player() -> Player {
         let (tx, _rx_external) = mpsc::channel(1);
@@ -766,6 +783,16 @@ mod tests {
         player.set_name("test");
         player.set_position(PixelPositionF64::new(112.0, 48.0));
         player
+    }
+
+    fn maintenance_test_file(name: &str, enabled: bool) -> PathBuf {
+        let path = std::env::temp_dir().join(name);
+        let payload = serde_json::json!({
+            "enabled": enabled,
+            "message": "Maintenance mode",
+        });
+        fs::write(&path, payload.to_string()).expect("failed to write maintenance test file");
+        path
     }
 
     #[test]
@@ -792,5 +819,52 @@ mod tests {
         player.update(&world, 0.0);
 
         assert_ne!(player.position().to_map_position(&world), MapPosition::new(3, 1));
+    }
+
+    #[tokio::test]
+    async fn handle_player_join_rejects_new_players_while_under_maintenance() {
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("maintenance env lock poisoned");
+        let path = maintenance_test_file("rustonator-maintenance-join-test.json", true);
+        unsafe {
+            std::env::set_var("MAINTENANCE_FILE", &path);
+        }
+
+        let (server_tx, mut server_rx) = mpsc::channel(4);
+        let (client_tx, client_rx) = mpsc::channel(4);
+        let player_id = PlayerId::from(99);
+        let mut player = Player::new(player_id, PlayerComm::new(player_id, server_tx, client_rx));
+        let config = GameConfig::new();
+        let mut world = World::new(15, 15, &config);
+
+        client_tx
+            .send(PlayerMessageExternal::new(
+                1,
+                PlayerMessage::JoinGame(JoinGameData {
+                    name: "alice".to_string(),
+                    character: None,
+                }),
+            ))
+            .await
+            .expect("failed to queue join message");
+
+        let joined = player
+            .handle_player_join(&mut world)
+            .await
+            .expect("join should not error");
+
+        let outbound = server_rx.recv().await.expect("expected maintenance rejection");
+        fs::remove_file(&path).ok();
+        unsafe {
+            std::env::remove_var("MAINTENANCE_FILE");
+        }
+
+        assert!(!joined);
+        assert!(matches!(
+            outbound.message(),
+            PlayerMessage::Dead(reason) if reason == "Maintenance mode"
+        ));
     }
 }

@@ -23,6 +23,7 @@ pub mod traits {
     pub mod worldobject;
 }
 pub mod utils {
+    pub mod maintenance;
     pub mod misc;
 }
 

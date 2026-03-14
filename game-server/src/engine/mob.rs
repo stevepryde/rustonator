@@ -202,6 +202,10 @@ impl Mob {
         Mob::default()
     }
 
+    pub fn id(&self) -> MobId {
+        self.id
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }

@@ -1,5 +1,6 @@
 import { useCallback, useState, type KeyboardEvent } from "react";
 import { useScores } from "../hooks/useScores";
+import { useMaintenance } from "../hooks/useMaintenance";
 import { uiAssets } from "../assets/uiAssets";
 import CharacterSelect from "./CharacterSelect";
 import ScoreBoard from "./ScoreBoard";
@@ -30,16 +31,22 @@ export default function StartMenu({
   onStart,
 }: StartMenuProps) {
   const { scores } = useScores();
+  const maintenance = useMaintenance();
   const [showError, setShowError] = useState(false);
 
   const tryStart = useCallback(() => {
+    if (maintenance.enabled) {
+      setShowError(false);
+      return;
+    }
+
     if (validNick(playerName)) {
       setShowError(false);
       onStart();
     } else {
       setShowError(true);
     }
-  }, [playerName, onStart]);
+  }, [maintenance.enabled, playerName, onStart]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -63,6 +70,13 @@ export default function StartMenu({
 
       {/* Main controls box */}
       <div className="green-border-box mt-5 w-[400px] max-w-[90vw] text-center text-white text-sm">
+        {maintenance.enabled && (
+          <div className="mb-4 border border-retro-error bg-black/60 px-3 py-2 text-retro-error font-bold">
+            UNDER MAINTENANCE
+            <div className="mt-1 text-xs text-white font-normal">{maintenance.message}</div>
+          </div>
+        )}
+
         <a href="/instructions.html">CLICK HERE FOR INSTRUCTIONS</a>
         <br />
         <br />
@@ -93,9 +107,10 @@ export default function StartMenu({
         <button
           type="button"
           onClick={tryStart}
-          className="btn-solid w-full max-w-[400px] mt-2.5 font-bold"
+          disabled={maintenance.enabled}
+          className="btn-solid w-full max-w-[400px] mt-2.5 font-bold disabled:cursor-not-allowed disabled:opacity-60"
         >
-          PLAY
+          {maintenance.enabled ? "UNDER MAINTENANCE" : "PLAY"}
         </button>
 
         <button

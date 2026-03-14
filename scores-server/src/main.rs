@@ -7,8 +7,8 @@ use axum::{
     routing::get,
 };
 use rustrict::CensorStr;
-use serde::Deserialize;
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use serde::{Deserialize, Serialize};
+use std::{fs, net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -23,8 +23,50 @@ struct SubmitScore {
     score: u32,
 }
 
+const DEFAULT_MAINTENANCE_MESSAGE: &str = "Under maintenance. Please try again later.";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct MaintenanceState {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default = "default_maintenance_message")]
+    message: String,
+}
+
+fn default_maintenance_message() -> String {
+    DEFAULT_MAINTENANCE_MESSAGE.to_string()
+}
+
+impl Default for MaintenanceState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            message: default_maintenance_message(),
+        }
+    }
+}
+
+impl MaintenanceState {
+    fn load_current() -> Self {
+        let path = std::env::var("MAINTENANCE_FILE")
+            .unwrap_or_else(|_| "maintenance.json".to_string());
+        Self::load_from_path(Path::new(&path))
+    }
+
+    fn load_from_path(path: &Path) -> Self {
+        match fs::read_to_string(path) {
+            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
+            Err(_) => Self::default(),
+        }
+    }
+}
+
 async fn get_scores(State(state): State<Arc<AppState>>) -> Json<store::ScoreBuckets> {
     Json(state.store.get_buckets().await)
+}
+
+async fn get_maintenance() -> Json<MaintenanceState> {
+    Json(MaintenanceState::load_current())
 }
 
 async fn post_score(
@@ -69,6 +111,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/scores", get(get_scores).post(post_score))
+        .route("/api/maintenance", get(get_maintenance))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
