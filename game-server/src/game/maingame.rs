@@ -989,6 +989,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chained_bombs_from_same_player_only_award_one_player_kill() {
+        let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
+        let killer = harness
+            .add_joined_player_at(1, MapPosition::new(6, 3), "alice")
+            .await;
+        let victim = harness
+            .add_joined_player_at(2, MapPosition::new(7, 3), "bob")
+            .await;
+
+        harness.increase_max_bombs(killer, 1);
+        harness.wait_for_spawn_invincibility_to_expire().await;
+
+        harness.queue_action(killer, -1, 0, true, false);
+        harness.tick_default().await;
+        harness.move_for_ticks(killer, Direction::Left, 6).await;
+
+        harness.queue_action(killer, -1, 0, true, false);
+        harness.tick_default().await;
+        harness.move_for_ticks(killer, Direction::Left, 6).await;
+
+        harness.tick_for_seconds(3.2).await;
+
+        assert_eq!(harness.player_score(killer), Some(2000));
+        assert_eq!(harness.player_score_multiplier(killer), Some(2));
+        assert_eq!(harness.player_is_active(victim), Some(false));
+        assert_eq!(harness.last_dead_reason(victim), Some("You were killed by 'alice'"));
+    }
+
+    #[tokio::test]
     async fn scenario_self_bomb_kill_reports_own_bomb_reason_without_score_gain() {
         let mut harness = ScenarioHarness::new_horizontal_corridor(47, 47, 3);
         let player = harness
