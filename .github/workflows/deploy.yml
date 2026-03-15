@@ -62,6 +62,13 @@ jobs:
           VITE_SCORES_URL: ${{ vars.VITE_SCORES_URL }}
           VITE_GAME_SERVER: ${{ vars.VITE_GAME_SERVER }}
           VITE_GAME_SERVER_SSL: "1"
+          VITE_CSP_CONNECT_SRC: ${{ vars.VITE_CSP_CONNECT_SRC_CF }}
+          VITE_CSP_SCRIPT_SRC: ${{ vars.VITE_CSP_SCRIPT_SRC_CF }}
+          VITE_CSP_STYLE_SRC: ${{ vars.VITE_CSP_STYLE_SRC_CF }}
+          VITE_CSP_IMG_SRC: ${{ vars.VITE_CSP_IMG_SRC_CF }}
+          VITE_CSP_FONT_SRC: ${{ vars.VITE_CSP_FONT_SRC_CF }}
+          VITE_CSP_MEDIA_SRC: ${{ vars.VITE_CSP_MEDIA_SRC_CF }}
+          CSP_FRAME_ANCESTORS: ${{ vars.CSP_FRAME_ANCESTORS_CF }}
         run: bun run build
 
       - name: Deploy to Cloudflare Pages

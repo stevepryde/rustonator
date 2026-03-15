@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && bun run scripts/write-headers.mjs",
     "preview": "vite preview",
     "test": "bun test"
   },

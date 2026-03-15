@@ -77,7 +77,7 @@ export default function StartMenu({
           </div>
         )}
 
-        <a href="/instructions.html">CLICK HERE FOR INSTRUCTIONS</a>
+        <a href="./instructions.html">CLICK HERE FOR INSTRUCTIONS</a>
         <br />
         <br />
         <p className="text-xs text-center">
@@ -132,7 +132,7 @@ export default function StartMenu({
           <b>Controller</b> - Left stick / D-pad, A
           <br />
           <br />
-          <a href="/glossary.html">Power-up item reference</a>
+          <a href="./glossary.html">Power-up item reference</a>
         </div>
       </div>
 
