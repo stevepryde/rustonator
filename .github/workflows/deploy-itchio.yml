@@ -1,0 +1,81 @@
+name: Deploy Rustonator to Itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "What to deploy"
+        required: true
+        type: choice
+        options:
+          - all
+          - servers
+          - game-server
+          - scores-server
+          - client
+
+jobs:
+  game-server:
+    if: contains(fromJSON('["all", "servers", "game-server"]'), inputs.target)
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      cargo_package: game_server
+      env_vars: |
+        SCORES_URL=http://127.0.0.1:9003
+      service_name: game_server
+    secrets:
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY_IJ }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST_IJ }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER_IJ }}
+      SCORES_SECRET: ${{ secrets.SCORES_SECRET }}
+
+  scores-server:
+    if: contains(fromJSON('["all", "servers", "scores-server"]'), inputs.target)
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      cargo_package: scores_server
+      env_vars: |
+        SCORES_FILE=/var/lib/scores_server/scores.json
+      service_name: scores_server
+    secrets:
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY_IJ }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST_IJ }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER_IJ }}
+      SCORES_SECRET: ${{ secrets.SCORES_SECRET }}
+
+  client:
+    if: contains(fromJSON('["all", "client"]'), inputs.target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: client
+        run: bun install
+
+      - name: Build client
+        working-directory: client
+        env:
+          VITE_SCORES_URL: ${{ vars.VITE_SCORES_URL_IJ }}
+          VITE_GAME_SERVER: ${{ vars.VITE_GAME_SERVER_IJ }}
+          VITE_GAME_SERVER_SSL: "1"
+        run: bun run build
+
+      - name: Install butler
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -L -o /tmp/butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -o /tmp/butler.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/butler"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy client to itch.io
+        working-directory: client
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_IO_TARGET: ${{ vars.ITCH_IO_TARGET }}
+          ITCH_IO_CHANNEL: ${{ vars.ITCH_IO_CHANNEL }}
+        run: butler push dist/ "${ITCH_IO_TARGET}:${ITCH_IO_CHANNEL}" --userversion "${GITHUB_SHA::7}"

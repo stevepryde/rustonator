@@ -1,0 +1,20 @@
+dtn8r-api.inspiredjourneys.dev {
+    # Trust Cloudflare's real IP header
+    trusted_proxies cloudflare
+
+    @websockets {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    handle @websockets {
+        reverse_proxy localhost:9002 {
+            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+        }
+    }
+
+    handle {
+        reverse_proxy localhost:9003 {
+            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+        }
+    }
+}
