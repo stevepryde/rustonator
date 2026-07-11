@@ -39,11 +39,10 @@ echo "==> Fetching ${remote_source} from ${source_host}..."
 scp "${source_host}:${remote_source}" "${tmp_file}"
 
 echo "==> Copying to vps-au1..."
-scp "${tmp_file}" "${vps_host}:/tmp/scores-${instance}.json"
-ssh -t "${vps_host}" "sudo install -o steve -g steve -m 0644 /tmp/scores-${instance}.json /opt/rustonator/data/${instance}/scores.json && rm /tmp/scores-${instance}.json"
+scp "${tmp_file}" "${vps_host}:/opt/rustonator/data/${instance}/scores.json"
 
 echo "==> Restarting ${instance}-scores so it loads the migrated file..."
-ssh -t "${vps_host}" "cd /opt/rustonator && sudo docker compose restart ${instance}-scores"
+ssh "${vps_host}" "cd /opt/rustonator && docker compose restart ${instance}-scores"
 
 echo "==> Done. Verify with:"
 echo "    curl -s https://<instance-domain>/api/scores"

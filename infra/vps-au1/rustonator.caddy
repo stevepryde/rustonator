@@ -1,11 +1,7 @@
 xp-api.stevepryde.com {
     tls /etc/caddy/ssl/stevepryde.com/origin-cert.pem /etc/caddy/ssl/stevepryde.com/origin-cert.key
 
-    @websockets {
-        header Connection *Upgrade*
-        header Upgrade websocket
-    }
-    handle @websockets {
+    handle /ws* {
         reverse_proxy 127.0.0.1:9002 {
             header_up X-Real-IP {http.request.header.CF-Connecting-IP}
         }
