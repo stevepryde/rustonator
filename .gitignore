@@ -4,3 +4,5 @@
 .vscode/
 scores.json
 dist/
+# Cloudflare origin certs fetched for deploys (never commit)
+infra/vps-au1/certs/

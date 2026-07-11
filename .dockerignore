@@ -1,0 +1,9 @@
+target/
+client/
+.git/
+.github/
+.claude/
+infra/
+scripts/
+*.md
+.DS_Store

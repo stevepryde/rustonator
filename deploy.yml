@@ -1,0 +1,42 @@
+name: "Rustonator"
+
+operation:
+  deploy:
+    default: true
+    description: "Publish server images and deploy the full runtime to vps-au1"
+    stage:
+      - description: "Build and push Rustonator server images"
+        type: "script"
+        path: "scripts/publish-rustonator-images.sh"
+
+      - description: "Deploy runtime to vps-au1"
+        type: "deploy"
+        path: "infra/vps-au1/deploy.yml"
+        operation: "deploy"
+
+  publish_images:
+    description: "Build both server images for linux/amd64 and push them to Docker Hub"
+    stage:
+      - description: "Build and push Rustonator server images"
+        type: "script"
+        path: "scripts/publish-rustonator-images.sh"
+
+  deploy_client:
+    description: "Build the client and deploy it to Cloudflare Pages production"
+    stage:
+      - description: "Build and deploy Rustonator client to Cloudflare Pages"
+        type: "script"
+        path: "scripts/deploy-client.sh"
+
+  deploy_client_itchio:
+    description: "Build the client against the dtn8r instance and push it to itch.io"
+    stage:
+      - description: "Build and push Rustonator client to itch.io"
+        type: "script"
+        path: "scripts/deploy-client-itchio.sh"
+
+  vps_au1:
+    description: "Open vps-au1 deploy menu"
+    stage:
+      - type: "deploy"
+        path: "infra/vps-au1/deploy.yml"

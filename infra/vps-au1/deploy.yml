@@ -1,0 +1,170 @@
+name: "Rustonator vps-au1 Infra"
+
+operation:
+  deploy:
+    default: true
+    description: "Deploy the full Rustonator runtime (both instances) to vps-au1"
+    stage:
+      - description: "Prepare directories"
+        type: "deploy"
+        path: "deploy.yml"
+        operation: "prepare_dirs"
+
+      - description: "Deploy instance env files"
+        type: "deploy"
+        path: "deploy.yml"
+        operation: "deploy_env"
+
+      - description: "Deploy Compose and start both instances"
+        type: "deploy"
+        path: "deploy.yml"
+        operation: "deploy_compose"
+
+      - description: "Deploy Caddy routing"
+        type: "deploy"
+        path: "deploy.yml"
+        operation: "deploy_caddy"
+
+      - description: "Health checks"
+        type: "deploy"
+        path: "deploy.yml"
+        operation: "healthcheck"
+
+  prepare_dirs:
+    description: "Create /opt/rustonator and per-instance score data directories"
+    stage:
+      - description: "Create data directories"
+        type: "ssh"
+        server: "vps-au1"
+        commands:
+          - "sudo -S mkdir -p /opt/rustonator/data/rustonator /opt/rustonator/data/dtn8r"
+          - "sudo -S chown -R steve:steve /opt/rustonator"
+
+  deploy_env:
+    description: "Deploy the encrypted per-instance env files to vps-au1"
+    stage:
+      - description: "Install rustonator instance env"
+        type: "env_file"
+        server: "vps-au1"
+        source: "rustonator.env.enc"
+        decrypt: "sops-age"
+        age_key_file: "~/.config/sops/age/keys.txt"
+        path: "/opt/rustonator/rustonator.env"
+        owner: "steve"
+        group: "steve"
+        mode: "0600"
+
+      - description: "Install dtn8r instance env"
+        type: "env_file"
+        server: "vps-au1"
+        source: "dtn8r.env.enc"
+        decrypt: "sops-age"
+        age_key_file: "~/.config/sops/age/keys.txt"
+        path: "/opt/rustonator/dtn8r.env"
+        owner: "steve"
+        group: "steve"
+        mode: "0600"
+
+  deploy_compose:
+    description: "Install Compose config, pull the latest images, and start or update both instances"
+    stage:
+      - description: "Install Docker Compose config"
+        type: "remote_file"
+        server: "vps-au1"
+        source: "docker-compose.yml"
+        path: "/opt/rustonator/docker-compose.yml"
+        owner: "steve"
+        group: "steve"
+        mode: "0644"
+        sudo: true
+
+      - description: "Pull and start both instances"
+        type: "docker_compose"
+        server: "vps-au1"
+        dir: "/opt/rustonator"
+        registry_auth: "dockerhub"
+        pull: true
+        up: true
+
+  sync_origin_cert:
+    description: "One-time: copy the stevepryde.com Cloudflare origin cert from drop1 to vps-au1"
+    stage:
+      - description: "Fetch origin cert from drop1"
+        type: "script"
+        path: "./fetch-origin-cert.sh"
+
+      - description: "Create cert directory"
+        type: "ssh"
+        server: "vps-au1"
+        commands:
+          - "sudo -S mkdir -p /etc/caddy/ssl/stevepryde.com"
+
+      - description: "Install origin cert"
+        type: "remote_file"
+        server: "vps-au1"
+        source: "certs/stevepryde.com-origin-cert.pem"
+        path: "/etc/caddy/ssl/stevepryde.com/origin-cert.pem"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+        sudo: true
+
+      - description: "Install origin cert key"
+        type: "remote_file"
+        server: "vps-au1"
+        source: "certs/stevepryde.com-origin-cert.key"
+        path: "/etc/caddy/ssl/stevepryde.com/origin-cert.key"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+        sudo: true
+
+  deploy_caddy:
+    description: "Deploy Caddy site configs to vps-au1"
+    stage:
+      - description: "Install and reload rustonator Caddy site"
+        type: "caddy_site"
+        server: "vps-au1"
+        source: "rustonator.caddy"
+        path: "/etc/caddy/sites/rustonator.caddy"
+        config: "/etc/caddy/Caddyfile"
+        validate: true
+        reload: true
+
+      - description: "Install and reload dtn8r Caddy site"
+        type: "caddy_site"
+        server: "vps-au1"
+        source: "dtn8r.caddy"
+        path: "/etc/caddy/sites/dtn8r.caddy"
+        config: "/etc/caddy/Caddyfile"
+        validate: true
+        reload: true
+
+  healthcheck:
+    description: "Verify all four services are up on their local ports"
+    stage:
+      - description: "Check local service health"
+        type: "remote_healthcheck"
+        server: "vps-au1"
+        checks:
+          - name: "rustonator-scores"
+            url: "http://127.0.0.1:9003/api/maintenance"
+            timeout: "60s"
+            interval: "2s"
+            expect_status: 200
+
+          - name: "dtn8r-scores"
+            url: "http://127.0.0.1:9013/api/maintenance"
+            timeout: "60s"
+            interval: "2s"
+            expect_status: 200
+
+          - name: "rustonator-game"
+            command: "timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/9002'"
+            timeout: "60s"
+            interval: "2s"
+
+          - name: "dtn8r-game"
+            command: "timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/9012'"
+            timeout: "60s"
+            interval: "2s"

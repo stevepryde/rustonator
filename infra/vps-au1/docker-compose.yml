@@ -1,0 +1,57 @@
+# Rustonator on vps-au1: two independent game instances, each a
+# game-server + scores-server pair.
+#
+#   rustonator: game 127.0.0.1:9002, scores 127.0.0.1:9003
+#   dtn8r:      game 127.0.0.1:9012, scores 127.0.0.1:9013
+#
+# Containers always listen on 9002/9003 internally; only the published
+# host ports differ. Caddy proxies the public domains to these ports.
+
+services:
+  rustonator-game:
+    image: stevepryde/rustonator-game:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9002:9002"
+    env_file:
+      - /opt/rustonator/rustonator.env
+    environment:
+      SCORES_URL: http://rustonator-scores:9003
+    depends_on:
+      - rustonator-scores
+
+  rustonator-scores:
+    image: stevepryde/rustonator-scores:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9003:9003"
+    env_file:
+      - /opt/rustonator/rustonator.env
+    environment:
+      SCORES_FILE: /data/scores.json
+    volumes:
+      - /opt/rustonator/data/rustonator:/data
+
+  dtn8r-game:
+    image: stevepryde/rustonator-game:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9012:9002"
+    env_file:
+      - /opt/rustonator/dtn8r.env
+    environment:
+      SCORES_URL: http://dtn8r-scores:9003
+    depends_on:
+      - dtn8r-scores
+
+  dtn8r-scores:
+    image: stevepryde/rustonator-scores:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9013:9003"
+    env_file:
+      - /opt/rustonator/dtn8r.env
+    environment:
+      SCORES_FILE: /data/scores.json
+    volumes:
+      - /opt/rustonator/data/dtn8r:/data
