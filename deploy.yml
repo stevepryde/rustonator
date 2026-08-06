@@ -1,13 +1,38 @@
 name: "Rustonator"
 
+vars:
+  image_tag: "latest"
+
 operation:
   deploy:
     default: true
     description: "Publish server images and deploy the full runtime to vps-au1"
     stage:
-      - description: "Build and push Rustonator server images"
-        type: "script"
-        path: "scripts/publish-rustonator-images.sh"
+      - type: "source_revision"
+        id: "source"
+        require_clean: false
+
+      - description: "Build and push the game server image"
+        type: "docker_image"
+        registry_auth: "dockerhub"
+        platform: "linux/amd64"
+        context: "."
+        dockerfile: "Dockerfile"
+        target: "game-server"
+        tags:
+          - "stevepryde/rustonator-game:{{image_tag}}"
+        output: "push"
+
+      - description: "Build and push the scores server image"
+        type: "docker_image"
+        registry_auth: "dockerhub"
+        platform: "linux/amd64"
+        context: "."
+        dockerfile: "Dockerfile"
+        target: "scores-server"
+        tags:
+          - "stevepryde/rustonator-scores:{{image_tag}}"
+        output: "push"
 
       - description: "Deploy runtime to vps-au1"
         type: "deploy"
@@ -17,23 +42,96 @@ operation:
   publish_images:
     description: "Build both server images for linux/amd64 and push them to Docker Hub"
     stage:
-      - description: "Build and push Rustonator server images"
-        type: "script"
-        path: "scripts/publish-rustonator-images.sh"
+      - type: "source_revision"
+        id: "source"
+        require_clean: false
+
+      - description: "Build and push the game server image"
+        type: "docker_image"
+        registry_auth: "dockerhub"
+        platform: "linux/amd64"
+        context: "."
+        dockerfile: "Dockerfile"
+        target: "game-server"
+        tags:
+          - "stevepryde/rustonator-game:{{image_tag}}"
+        output: "push"
+
+      - description: "Build and push the scores server image"
+        type: "docker_image"
+        registry_auth: "dockerhub"
+        platform: "linux/amd64"
+        context: "."
+        dockerfile: "Dockerfile"
+        target: "scores-server"
+        tags:
+          - "stevepryde/rustonator-scores:{{image_tag}}"
+        output: "push"
 
   deploy_client:
     description: "Build the client and deploy it to Cloudflare Pages production"
     stage:
-      - description: "Build and deploy Rustonator client to Cloudflare Pages"
-        type: "script"
-        path: "scripts/deploy-client.sh"
+      - type: "source_revision"
+        id: "source"
+        require_clean: false
+
+      - description: "Build the client against the production endpoints"
+        type: "local_artifact"
+        id: "client"
+        cwd: "client"
+        env:
+          VITE_GAME_SERVER: "xp-api.stevepryde.com"
+          VITE_SCORES_URL: "https://xp-api.stevepryde.com"
+          VITE_GAME_SERVER_SSL: "1"
+        commands:
+          - { program: "bun", args: ["install", "--frozen-lockfile"] }
+          - { program: "bun", args: ["run", "build"] }
+        artifact:
+          path: "dist"
+          require:
+            - "index.html"
+
+      - description: "Deploy the client to Cloudflare Pages"
+        type: "cloudflare_pages"
+        profile: "personal"
+        project: "rustonator"
+        directory: "{{stages.client.artifact_path}}"
+        branch: "main"
+        wrangler: "client/node_modules/.bin/wrangler"
+        commit:
+          hash: "{{stages.source.revision}}"
+          message: "{{stages.source.message}}"
+          dirty: "{{stages.source.dirty}}"
 
   deploy_client_itchio:
     description: "Build the client against the dtn8r instance and push it to itch.io"
     stage:
-      - description: "Build and push Rustonator client to itch.io"
-        type: "script"
-        path: "scripts/deploy-client-itchio.sh"
+      - type: "source_revision"
+        id: "source"
+        require_clean: false
+
+      - description: "Build the client against the dtn8r endpoints"
+        type: "local_artifact"
+        id: "client"
+        cwd: "client"
+        env:
+          VITE_GAME_SERVER: "dtn8r-api.inspiredjourneys.dev"
+          VITE_SCORES_URL: "https://dtn8r-api.inspiredjourneys.dev"
+          VITE_GAME_SERVER_SSL: "1"
+        commands:
+          - { program: "bun", args: ["install", "--frozen-lockfile"] }
+          - { program: "bun", args: ["run", "build"] }
+        artifact:
+          path: "dist"
+          require:
+            - "index.html"
+
+      # Requires butler on PATH and BUTLER_API_KEY exported (or a prior
+      # 'butler login'). See https://itch.io/docs/butler/installing.html
+      - description: "Push the web build to itch.io"
+        type: "local"
+        commands:
+          - "butler push '{{stages.client.artifact_path}}' inspiredjourneys/detonator:web --userversion {{stages.source.short_revision}}"
 
   vps_au1:
     description: "Open vps-au1 deploy menu"

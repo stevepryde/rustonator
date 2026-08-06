@@ -10,7 +10,7 @@
 #   docker buildx build --platform linux/amd64 --target game-server   -t stevepryde/rustonator-game .
 #   docker buildx build --platform linux/amd64 --target scores-server -t stevepryde/rustonator-scores .
 #
-# See scripts/publish-rustonator-images.sh for the full publish flow.
+# The full publish flow is the spdeploy 'publish_images' operation in deploy.yml.
 
 FROM --platform=$BUILDPLATFORM rust:1-bookworm AS builder
 
